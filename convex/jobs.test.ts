@@ -774,7 +774,7 @@ test("slides are gated, validated, atomically published, retryable, and stale-sa
     projectId: project._id, planRevisionId: "not-ready",
   }), "TOOL_NOT_AVAILABLE");
   const planRevisionId = "plan_ready_revision";
-  const planItems = await t.run(async (ctx) => {
+  await t.run(async (ctx) => {
     const sourceMessageId = await ctx.db.insert("messages", {
       userId, projectId: project._id, role: "user", body: "Confirmed facts", createdAt: Date.now(),
     });
@@ -817,9 +817,41 @@ test("slides are gated, validated, atomically published, retryable, and stale-sa
   };
   const loaded = await t.mutation(internal.slides.load, firstArgs);
   expect(loaded.planItems.map((item) => item.talkingPoint)).toEqual(["Problem", "Solution"]);
-  expect(() => validateSlides([{ planItemId: planItems[0], sort: 0, headline: " ", body: "Body", placeholder: {
-    aspect: "9:16", status: "empty", description: "Visual",
-  }}], loaded.planItems)).toThrow(/SLIDE_CONTENT_INVALID.*field=slides/);
+  const validSlides = loaded.planItems.map((item) => ({
+    planItemId: item._id, sort: item.sort, headline: "Headline", body: "Body",
+    placeholder: { aspect: "9:16", status: "empty", description: "Visual" },
+  }));
+  function withField(field: "headline" | "body" | "placeholder.description", value: unknown) {
+    const candidate = structuredClone(validSlides) as Array<Record<string, unknown>>;
+    if (field === "placeholder.description") {
+      (candidate[0].placeholder as Record<string, unknown>).description = value;
+    } else {
+      candidate[0][field] = value;
+    }
+    return candidate;
+  }
+  for (const [field, max] of [["headline", 120], ["body", 700], ["placeholder.description", 1000]] as const) {
+    expect(validateSlides(withField(field, ` ${"x".repeat(max)} `), loaded.planItems)[0])
+      .toMatchObject(field === "placeholder.description"
+        ? { placeholder: { description: "x".repeat(max) } }
+        : { [field]: "x".repeat(max) });
+    expect(() => validateSlides(withField(field, "😀".repeat(max)), loaded.planItems)).not.toThrow();
+    for (const invalidValue of ["x".repeat(max + 1), "   ", null, undefined, 42]) {
+      expect(() => validateSlides(withField(field, invalidValue), loaded.planItems))
+        .toThrow(new RegExp(`SLIDE_CONTENT_INVALID.*field=${field.replace(".", "\\.")}`));
+    }
+  }
+  expect(() => validateSlides(withField("headline", "x").map((slide, index) =>
+    index === 0 ? { ...slide, planItemId: String(project._id) } : slide), loaded.planItems))
+    .toThrow(/SLIDE_CONTENT_INVALID.*field=planItemId/);
+  expect(() => validateSlides(withField("headline", "x").map((slide, index) =>
+    index === 0 ? { ...slide, sort: 1 } : slide), loaded.planItems))
+    .toThrow(/SLIDE_CONTENT_INVALID.*field=sort/);
+
+  await expectConvexCode(t.mutation(internal.slides.apply, {
+    ...firstArgs,
+    slides: validSlides.map((slide, index) => index === 0 ? { ...slide, headline: "x".repeat(121) } : slide),
+  }), "SLIDE_CONTENT_INVALID:slide=1:field=headline");
   await t.mutation(internal.slides.fail, { ...firstArgs, error: "SLIDE_CONTENT_INVALID:slide=1:field=headline" });
   expect((await owner.query(api.slides.current, { projectId: project._id })).job?.error)
     .toBe("SLIDE_CONTENT_INVALID:slide=1:field=headline");
