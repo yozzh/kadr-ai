@@ -1,6 +1,7 @@
 import type { Doc } from "./_generated/dataModel";
 import type { ThreadStateV1 } from "./supervisorState";
 import { listAvailableTools } from "./toolContracts";
+import { SKILL_CATALOG } from "./skills";
 
 export const MAIN_PROMPT = `You are Kadr’s assistant in Chat. Help one founder work on one project from a phone. Kadr creates a vertical 9:16 pitch presentation; it is not a timeline editor.
 
@@ -44,10 +45,18 @@ Do not output Remotion code, CSS, or whole-project JSON in Chat. When slides exi
 
 Do not mention implementation vendors unless the user asks how Kadr works.`;
 
-export function buildEnvelope(project: Doc<"projects">, state: ThreadStateV1) {
-  const tools = listAvailableTools(state);
+export function buildEnvelope(
+  project: Doc<"projects">,
+  state: ThreadStateV1,
+  briefComplete = false,
+  briefAnswers: Array<{ questionId: string; value: string; unknown: boolean }> = [],
+) {
+  const tools = listAvailableTools(state, briefComplete);
+  const fragment = state.activeSkill === "presentation_onboarding"
+    ? `${SKILL_CATALOG[0].promptFragment}\nSaved brief state for this turn: ${JSON.stringify(briefAnswers.map(({ questionId, value, unknown }) => ({ questionId, value, unknown })))}.`
+    : "";
   return {
     tools,
-    text: `<envelope>\nproject_status: ${project.status}\nactive_skill: ${state.activeSkill ?? "empty"}\nskill_version: ${state.skillVersion ?? "empty"}\npending_intent: ${state.pendingIntent ?? "empty"}\navailable_tools: ${tools.join(",")}\nbrief_confirmed: ${project.status === "empty" ? "false" : "true"}\n</envelope>`,
+    text: `<envelope>\nproject_status: ${project.status}\nactive_skill: ${state.activeSkill ?? "empty"}\nskill_version: ${state.skillVersion ?? "empty"}\npending_intent: ${state.pendingIntent ?? "empty"}\navailable_tools: ${tools.join(",")}\nbrief_confirmed: ${project.confirmedBriefRevisionId ? "yes" : "no"}\n</envelope>${fragment ? `\n\n${fragment}` : ""}`,
   };
 }

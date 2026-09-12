@@ -445,6 +445,26 @@ function ChatPane({
   );
   const retrySupervisor = useMutation(api.jobs.retrySupervisor);
   const [retrying, setRetrying] = useState(false);
+  const brief = useQuery(
+    api.brief.progress,
+    current ? { projectId: current._id } : "skip",
+  );
+  const acceptOnboarding = useMutation(api.supervisorState.acceptSkillOffer);
+  const stopOnboarding = useMutation(api.supervisorState.clearSkillForUser);
+  const confirmBrief = useMutation(api.brief.confirmBrief);
+  const [briefActionPending, setBriefActionPending] = useState(false);
+
+  async function runBriefAction(action: () => Promise<unknown>) {
+    setBriefActionPending(true);
+    setSendError(null);
+    try {
+      await action();
+    } catch {
+      setSendError("Couldn't update onboarding. Please try again.");
+    } finally {
+      setBriefActionPending(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -523,6 +543,33 @@ function ChatPane({
           </div>
         )}
       </main>
+      {current && brief?.state.pendingIntent ? (
+        <section className="onboarding-card" aria-label="Presentation onboarding offer">
+          <div>
+            <strong>Build your presentation brief</strong>
+            <span>Six quick questions · about 3 minutes</span>
+          </div>
+          <div className="onboarding-card__actions">
+            <button type="button" className="onboarding-secondary" disabled={briefActionPending} onClick={() => void runBriefAction(() => stopOnboarding({ projectId: current._id }))}>Not now</button>
+            <button type="button" className="onboarding-primary" disabled={briefActionPending} onClick={() => void runBriefAction(() => acceptOnboarding({ projectId: current._id }))}>Start</button>
+          </div>
+        </section>
+      ) : null}
+      {current && brief?.state.activeSkill === "presentation_onboarding" ? (
+        <section className="onboarding-progress" aria-label="Presentation brief progress">
+          <div className="onboarding-progress__copy">
+            <span>Presentation brief</span>
+            <strong>{brief.closedCount} of {brief.totalCount}</strong>
+          </div>
+          <progress value={brief.closedCount} max={brief.totalCount}>{brief.closedCount} of {brief.totalCount}</progress>
+          <div className="onboarding-card__actions">
+            <button type="button" className="onboarding-secondary" disabled={briefActionPending} onClick={() => void runBriefAction(() => stopOnboarding({ projectId: current._id }))}>Stop</button>
+            {brief.complete ? (
+              <button type="button" className="onboarding-primary" disabled={briefActionPending} onClick={() => void runBriefAction(() => confirmBrief({ projectId: current._id, revisionId: brief.revisionId }))}>Confirm brief</button>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
       <form className="composer" onSubmit={(event) => void handleSubmit(event)}>
         <label className="sr-only" htmlFor="chat-message">
           Message Kadr

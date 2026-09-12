@@ -344,6 +344,66 @@ textarea {
   font-weight: 700;
 }
 
+.onboarding-card,
+.onboarding-progress {
+  display: grid;
+  gap: 10px;
+  margin: 0 14px 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+}
+
+.onboarding-card > div:first-child,
+.onboarding-progress__copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onboarding-card span,
+.onboarding-progress span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.onboarding-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.onboarding-card__actions button {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.onboarding-primary {
+  border: 0;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.onboarding-secondary {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+
+.onboarding-card__actions button:disabled {
+  opacity: 0.55;
+}
+
+.onboarding-progress progress {
+  width: 100%;
+  height: 6px;
+  accent-color: var(--accent);
+}
+
 .composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px;

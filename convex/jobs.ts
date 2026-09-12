@@ -8,6 +8,7 @@ import {
   query,
 } from "./_generated/server";
 import { ownedOrNotFound, requireUser } from "./authz";
+import { isBriefComplete } from "./brief";
 
 const probeArgs = {
   userId: v.string(),
@@ -84,10 +85,14 @@ export const loadSupervisorTurn = internalMutation({
     const messages = await ctx.db.query("messages")
       .withIndex("by_projectId_and_createdAt", (q) => q.eq("projectId", args.projectId))
       .order("asc").collect();
+    const briefAnswers = project.currentRevisionId
+      ? (await ctx.db.query("briefAnswers").withIndex("by_projectId", (q) => q.eq("projectId", args.projectId)).collect())
+        .filter((answer) => answer.revisionId === project.currentRevisionId)
+      : [];
     const sourceIndex = messages.findIndex((message) => message._id === args.sourceMessageId);
     if (sourceIndex < 0) throw new ConvexError("SUPERVISOR_JOB_INVALID");
     await ctx.db.patch(args.jobId, { status: "running" });
-    return { project, messages: messages.slice(0, sourceIndex + 1) };
+    return { project, messages: messages.slice(0, sourceIndex + 1), briefAnswers, briefComplete: isBriefComplete(briefAnswers) };
   },
 });
 

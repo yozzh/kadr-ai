@@ -105,6 +105,18 @@ export const acceptSkillOffer = mutation({
   },
 });
 
+export const clearSkillForUser = mutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    const project = ownedOrNotFound(await ctx.db.get(args.projectId), userId);
+    const state = parseThreadState(project.langgraphThreadState);
+    if (state.pendingIntent === null && state.activeSkill === null) throw new ConvexError("TOOL_NOT_AVAILABLE");
+    await ctx.db.patch(project._id, { langgraphThreadState: EMPTY_THREAD_STATE });
+    return EMPTY_THREAD_STATE;
+  },
+});
+
 export const clearSkill = internalMutation({
   args: controlArgs,
   handler: async (ctx, args) => {

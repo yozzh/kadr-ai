@@ -5,4 +5,11 @@ export const CONTROL_TOOL_IDS = [
 ] as const;
 
 export type ControlToolId = (typeof CONTROL_TOOL_IDS)[number];
+export const BRIEF_TOOL_IDS = [
+  "save_brief_answer",
+  "mark_unknown",
+  "confirm_brief",
+] as const;
+export type BriefToolId = (typeof BRIEF_TOOL_IDS)[number];
+export type SupervisorToolId = ControlToolId | BriefToolId;
 export const OFFERABLE_SKILL = "presentation_onboarding" as const;

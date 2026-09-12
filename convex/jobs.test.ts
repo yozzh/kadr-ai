@@ -10,6 +10,7 @@ import * as messages from "./messages";
 import * as projects from "./projects";
 import * as questions from "./questions";
 import * as users from "./users";
+import * as brief from "./brief";
 import { parseThreadState } from "./supervisorState";
 import { listAvailableTools } from "./toolContracts";
 import httpSource from "./http.ts?raw";
@@ -89,6 +90,7 @@ test("public api is query/mutation only; auth is google plus http routes", () =>
     ...publicFunctions(messages),
     ...publicFunctions(projects),
     ...publicFunctions(questions),
+    ...publicFunctions(brief),
     ...publicFunctions(users),
   ]) {
     const typed = fn as { isAction?: boolean; isHttpAction?: boolean };
@@ -541,7 +543,7 @@ test("supervisor smoke covers completion, control state, invalid state, and safe
   await owner.mutation(api.supervisorState.acceptSkillOffer, { projectId: project._id });
   const active = parseThreadState((await owner.query(api.projects.get, { projectId: project._id })).langgraphThreadState);
   expect(active.activeSkill).toBe("presentation_onboarding");
-  expect(listAvailableTools(active)).toEqual(["clear_skill"]);
+  expect(listAvailableTools(active)).toEqual(["clear_skill", "save_brief_answer", "mark_unknown"]);
   await t.mutation(internal.supervisorState.clearSkill, {
     userId, projectId: project._id, jobId: control.job!._id,
   });
@@ -575,6 +577,77 @@ test("supervisor smoke covers completion, control state, invalid state, and safe
   const failed = await owner.query(api.jobs.get, { jobId: failing.job!._id });
   expect(failed?.status).toBe("failed");
   expect(failed?.error).toBe("SUPERVISOR_FAILED");
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
+test("onboarding saves provenance, forks corrections, and confirms without a plan job", async () => {
+  const t = makeTest();
+  vi.useFakeTimers();
+  const userId = String(await insertUser(t));
+  const owner = asUser(t, userId);
+  const project = await owner.mutation(api.projects.ensure, {});
+  const sent = await owner.mutation(api.messages.send, {
+    projectId: project._id,
+    body: "Our product helps founders",
+    clientMessageId: "onboarding",
+  });
+  const runtime = {
+    userId,
+    projectId: project._id,
+    jobId: sent.job!._id,
+    sourceMessageId: sent.message._id,
+  };
+  await t.mutation(internal.jobs.loadSupervisorTurn, {
+    ...runtime,
+    revisionId: sent.job!.revisionId,
+  });
+  await t.mutation(internal.supervisorState.offerSkill, {
+    userId,
+    projectId: project._id,
+    jobId: sent.job!._id,
+    skill: "presentation_onboarding",
+  });
+  await owner.mutation(api.supervisorState.acceptSkillOffer, { projectId: project._id });
+  await expectConvexCode(
+    owner.mutation(api.brief.confirmBrief, { projectId: project._id, revisionId: project.currentRevisionId! }),
+    "BRIEF_INCOMPLETE",
+  );
+  await expectConvexCode(
+    t.mutation(internal.brief.saveBriefAnswer, { ...runtime, questionId: "q_missing", value: "No" }),
+    "BRIEF_QUESTION_UNKNOWN",
+  );
+
+  for (const [questionId, value] of [
+    ["q_one_liner", "A pitch assistant"],
+    ["q_audience", "Startup founders"],
+    ["q_problem", "Decks take too long"],
+    ["q_difference", "Conversation first"],
+    ["q_cta", "Book a demo"],
+  ]) {
+    await t.mutation(internal.brief.saveBriefAnswer, { ...runtime, questionId, value });
+  }
+  await t.mutation(internal.brief.markUnknown, { ...runtime, questionId: "q_proof" });
+  const before = await owner.query(api.brief.progress, { projectId: project._id });
+  expect(before.complete).toBe(true);
+  expect(before.closedCount).toBe(6);
+  expect(before.answers.every((answer) => answer.messageId === sent.message._id)).toBe(true);
+  expect(before.answers.find((answer) => answer.questionId === "q_proof")).toMatchObject({ unknown: true, value: "" });
+  expect(listAvailableTools(before.state, before.complete)).toContain("confirm_brief");
+
+  await t.mutation(internal.brief.saveBriefAnswer, { ...runtime, questionId: "q_cta", value: "Join the waitlist" });
+  const corrected = await owner.query(api.brief.progress, { projectId: project._id });
+  expect(corrected.revisionId).not.toBe(before.revisionId);
+  expect(corrected.answers).toHaveLength(6);
+  const oldRows = await t.run(async (ctx) => (await ctx.db.query("briefAnswers").collect()).filter((row) => row.revisionId === before.revisionId));
+  expect(oldRows.find((answer) => answer.questionId === "q_cta")?.value).toBe("Book a demo");
+
+  await owner.mutation(api.brief.confirmBrief, { projectId: project._id, revisionId: corrected.revisionId });
+  const confirmed = await owner.query(api.projects.get, { projectId: project._id });
+  expect(confirmed.status).toBe("brief_ready");
+  expect(confirmed.confirmedBriefRevisionId).toBe(corrected.revisionId);
+  expect(parseThreadState(confirmed.langgraphThreadState).activeSkill).toBeNull();
+  expect((await t.run(async (ctx) => ctx.db.query("jobs").collect())).filter((job) => job.kind !== "supervisor")).toHaveLength(0);
   vi.clearAllTimers();
   vi.useRealTimers();
 });

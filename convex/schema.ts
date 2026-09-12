@@ -28,6 +28,7 @@ export default defineSchema({
     langgraphThreadState: v.optional(v.any()),
     currentJobId: v.optional(v.id("jobs")),
     currentRevisionId: v.optional(v.string()),
+    confirmedBriefRevisionId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])
@@ -55,10 +56,17 @@ export default defineSchema({
     questionId: v.string(),
     revisionId: v.string(),
     value: v.string(),
+    unknown: v.boolean(),
+    messageId: v.id("messages"),
   })
     .index("by_userId", ["userId"])
     .index("by_projectId", ["projectId"])
-    .index("by_questionId", ["questionId"]),
+    .index("by_questionId", ["questionId"])
+    .index("by_projectId_and_questionId_and_revisionId", [
+      "projectId",
+      "questionId",
+      "revisionId",
+    ]),
 
   jobs: defineTable({
     userId: v.string(),

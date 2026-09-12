@@ -30,6 +30,7 @@ export const seed = mutation({
         .withIndex("by_questionId", (q) => q.eq("questionId", item.questionId))
         .first();
       if (existing) {
+        await ctx.db.patch(existing._id, item);
         ids.push(existing._id);
         continue;
       }

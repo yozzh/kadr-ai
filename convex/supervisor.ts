@@ -32,7 +32,7 @@ export const runSupervisor = internalAction({
     try {
       const turn = await ctx.runMutation(internal.jobs.loadSupervisorTurn, args);
       const state = parseThreadState(turn.project.langgraphThreadState);
-      const envelope = buildEnvelope(turn.project, state);
+      const envelope = buildEnvelope(turn.project, state, turn.briefComplete, turn.briefAnswers);
       const common = { userId: args.userId, projectId: args.projectId, jobId: args.jobId };
       const available = new Set(envelope.tools);
       const tools = [
@@ -50,6 +50,22 @@ export const runSupervisor = internalAction({
           if (!available.has("clear_skill")) throw new Error("TOOL_NOT_AVAILABLE");
           return await ctx.runMutation(internal.supervisorState.clearSkill, common);
         }, { name: "clear_skill", description: "Clear the pending or active skill.", schema: { type: "object", properties: {}, additionalProperties: false } }),
+        tool(async ({ questionId, value }: { questionId: string; value: string }) => {
+          if (!available.has("save_brief_answer")) throw new Error("TOOL_NOT_AVAILABLE");
+          return await ctx.runMutation(internal.brief.saveBriefAnswer, { ...common, sourceMessageId: args.sourceMessageId, questionId, value });
+        }, { name: "save_brief_answer", description: "Save one fact explicitly stated by the user for a catalog question.", schema: {
+          type: "object", properties: { questionId: { type: "string" }, value: { type: "string" } }, required: ["questionId", "value"], additionalProperties: false,
+        } }),
+        tool(async ({ questionId }: { questionId: string }) => {
+          if (!available.has("mark_unknown")) throw new Error("TOOL_NOT_AVAILABLE");
+          return await ctx.runMutation(internal.brief.markUnknown, { ...common, sourceMessageId: args.sourceMessageId, questionId });
+        }, { name: "mark_unknown", description: "Record that the user explicitly does not know a catalog answer.", schema: {
+          type: "object", properties: { questionId: { type: "string" } }, required: ["questionId"], additionalProperties: false,
+        } }),
+        tool(async () => {
+          if (!available.has("confirm_brief")) throw new Error("TOOL_NOT_AVAILABLE");
+          return await ctx.runMutation(internal.brief.confirmBriefInternal, { ...common, sourceMessageId: args.sourceMessageId });
+        }, { name: "confirm_brief", description: "Confirm the complete active brief revision without generating a plan.", schema: { type: "object", properties: {}, additionalProperties: false } }),
       ].filter((candidate) => available.has(candidate.name as never));
       const apiKey = process.env.XAI_API_KEY;
       const modelName = process.env.XAI_MODEL;
