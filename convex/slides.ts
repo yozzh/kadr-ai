@@ -146,6 +146,36 @@ export const current = query({
   },
 });
 
+export const updateInternal = internalMutation({
+  args: {
+    userId: v.string(),
+    projectId: v.id("projects"),
+    slideId: v.id("slides"),
+    headline: v.string(),
+    body: v.string(),
+    placeholderDescription: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const [project, slide] = await Promise.all([
+      ctx.db.get(args.projectId),
+      ctx.db.get(args.slideId),
+    ]);
+    if (!project || !slide || project.userId !== args.userId || slide.userId !== args.userId ||
+      slide.projectId !== project._id || project.status !== "slides_ready" ||
+      slide.revisionId !== project.currentSlidesRevisionId) throw new ConvexError("SLIDE_CONTEXT_INVALID");
+    const number = slide.sort + 1;
+    await ctx.db.patch(slide._id, {
+      headline: cleanString(args.headline, 120, number, "headline"),
+      body: cleanString(args.body, 700, number, "body"),
+      placeholder: {
+        ...slide.placeholder,
+        description: cleanString(args.placeholderDescription, 1000, number, "placeholder.description"),
+      },
+    });
+    return { updated: true, slideId: slide._id };
+  },
+});
+
 export const load = internalMutation({
   args: runArgs,
   handler: async (ctx, args) => {

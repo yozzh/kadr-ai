@@ -115,6 +115,31 @@ export const runSupervisor = internalAction({
           required: ["projectId", "planRevisionId"],
           additionalProperties: false,
         } }),
+        tool(async ({ headline, body, placeholderDescription }: {
+          headline: string; body: string; placeholderDescription: string;
+        }) => {
+          if (!available.has("update_slide")) throw new Error("TOOL_NOT_AVAILABLE");
+          const sourceMessage = turn.messages.at(-1);
+          const slideContext = sourceMessage && "slideContext" in sourceMessage ? sourceMessage.slideContext : undefined;
+          if (!slideContext) throw new Error("SLIDE_CONTEXT_INVALID");
+          return await ctx.runMutation(internal.slides.updateInternal, {
+            userId: args.userId,
+            projectId: args.projectId,
+            slideId: slideContext.id,
+            headline,
+            body,
+            placeholderDescription,
+          });
+        }, { name: "update_slide", description: "Update the selected current slide after the user explicitly requests the change. Send the complete replacement headline, body, and visual description, preserving fields the user did not ask to change.", schema: {
+          type: "object",
+          properties: {
+            headline: { type: "string" },
+            body: { type: "string" },
+            placeholderDescription: { type: "string" },
+          },
+          required: ["headline", "body", "placeholderDescription"],
+          additionalProperties: false,
+        } }),
       ].filter((candidate) => available.has(candidate.name as never));
       const apiKey = process.env.XAI_API_KEY;
       const modelName = process.env.XAI_MODEL;
@@ -124,7 +149,7 @@ export const runSupervisor = internalAction({
       const result = await agent.invoke({ messages: turn.messages.map((message) => {
         if (message.role === "assistant") return new AIMessage(message.body);
         const prefix = "slideContext" in message && message.slideContext
-          ? `[Trusted slide context: Slide ${message.slideContext.number} — ${message.slideContext.headline}. Slide editing is not available; say so honestly if the user requests a change.]\n`
+          ? `[Trusted slide context: ${JSON.stringify(message.slideContext)}. If the user explicitly requests a change to this slide and update_slide is available, apply it with complete replacement fields and then briefly confirm what changed.]\n`
           : "";
         return new HumanMessage(`${prefix}${message.body}`);
       }) }, {

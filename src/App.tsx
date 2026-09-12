@@ -463,6 +463,7 @@ function ChatPane({
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const chatRef = useRef<HTMLElement>(null);
   const messages = useQuery(
     api.messages.list,
     current ? { projectId: current._id } : "skip",
@@ -501,6 +502,11 @@ function ChatPane({
     !messages.some((message) =>
       message.role === "assistant" && message.body === slidesReadyMessage
     );
+
+  useLayoutEffect(() => {
+    const chat = chatRef.current;
+    if (chat) chat.scrollTop = chat.scrollHeight;
+  }, [messages, showSyntheticSlidesReady]);
 
   async function runSlidesAction(action: () => Promise<unknown>) {
     setSlidesActionPending(true);
@@ -588,7 +594,7 @@ function ChatPane({
           <span className="brand__name">Kadr</span>
         </div>
       </header>
-      <main className="chat" aria-live="polite">
+      <main ref={chatRef} className="chat" aria-live="polite">
         <p className="chat__day">Today</p>
         {current == null || messages === undefined ? (
           <p className="chat__status">Loading conversation…</p>

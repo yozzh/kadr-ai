@@ -889,6 +889,7 @@ test("slides are gated, validated, atomically published, retryable, and stale-sa
     { sort: 1, headline: "Headline 2", jobId: retry!._id },
   ]);
   expect((await owner.query(api.projects.get, { projectId: project._id })).status).toBe("slides_ready");
+  expect(listAvailableTools(idle, false, "slides_ready", ready.confirmedBriefRevisionId)).toContain("update_slide");
   expect((await owner.query(api.messages.list, { projectId: project._id }))
     .filter((message) => message.role === "assistant" && message.body === "Your presentation is ready."))
     .toHaveLength(1);
@@ -907,7 +908,26 @@ test("slides are gated, validated, atomically published, retryable, and stale-sa
     sourceMessageId: contextual.message._id,
   });
   expect(contextualTurn.messages.at(-1)).toMatchObject({
-    slideContext: { number: 2, headline: "Headline 2" },
+    slideContext: {
+      id: done.slides[1]._id,
+      number: 2,
+      headline: "Headline 2",
+      body: "Body",
+      placeholderDescription: "Process diagram",
+    },
+  });
+  await t.mutation(internal.slides.updateInternal, {
+    userId,
+    projectId: project._id,
+    slideId: done.slides[1]._id,
+    headline: "Sharper headline",
+    body: "Sharper body",
+    placeholderDescription: "Sharper visual",
+  });
+  expect((await owner.query(api.slides.current, { projectId: project._id })).slides[1]).toMatchObject({
+    headline: "Sharper headline",
+    body: "Sharper body",
+    placeholder: { description: "Sharper visual" },
   });
   const staleSlideId = await t.run(async (ctx) => {
     const slide = done.slides[0];

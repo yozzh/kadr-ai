@@ -100,7 +100,16 @@ export const loadSupervisorTurn = internalMutation({
       const slide = await ctx.db.get(message.slideId);
       if (!slide || slide.userId !== args.userId || slide.projectId !== project._id ||
         slide.revisionId !== project.currentSlidesRevisionId) return { ...message, slideId: undefined };
-      return { ...message, slideContext: { number: slide.sort + 1, headline: slide.headline } };
+      return {
+        ...message,
+        slideContext: {
+          id: slide._id,
+          number: slide.sort + 1,
+          headline: slide.headline,
+          body: slide.body,
+          placeholderDescription: slide.placeholder.description,
+        },
+      };
     }));
     await ctx.db.patch(args.jobId, { status: "running" });
     return {

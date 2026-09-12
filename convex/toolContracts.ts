@@ -21,6 +21,9 @@ export function listAvailableTools(
   if (projectStatus === "plan_ready") {
     return ["offer_skill", "generate_slides"];
   }
+  if (projectStatus === "slides_ready") {
+    return ["offer_skill", "update_slide"];
+  }
   return ["offer_skill"];
 }
 

@@ -269,6 +269,7 @@ test("chat and project expose the reactive vertical viewer and slide context", (
 test("chat UI keeps composer, history, markdown, and favicon contracts", () => {
   expect(appSource).toContain("useLayoutEffect");
   expect(appSource).toContain("Math.min(composer.scrollHeight, 112)");
+  expect(appSource).toContain("chat.scrollTop = chat.scrollHeight");
   expect(appSource).toContain('event.key === "Enter"');
   expect(appSource).toContain("!event.shiftKey");
   expect(appSource).toContain("!event.nativeEvent.isComposing");
