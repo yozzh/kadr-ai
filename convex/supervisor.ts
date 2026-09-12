@@ -44,7 +44,7 @@ export const runSupervisor = internalAction({
         } }),
         tool(async () => {
           if (!available.has("accept_skill_offer")) throw new Error("TOOL_NOT_AVAILABLE");
-          return await ctx.runMutation(internal.supervisorState.acceptSkillOffer, common);
+          return await ctx.runMutation(internal.supervisorState.acceptSkillOfferInternal, common);
         }, { name: "accept_skill_offer", description: "Accept the pending skill offer.", schema: { type: "object", properties: {}, additionalProperties: false } }),
         tool(async () => {
           if (!available.has("clear_skill")) throw new Error("TOOL_NOT_AVAILABLE");

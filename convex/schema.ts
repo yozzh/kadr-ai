@@ -125,5 +125,7 @@ export default defineSchema({
     allowlistedTools: v.array(v.string()),
     bans: v.array(v.string()),
     promptFragment: v.string(),
-  }).index("by_name_and_version", ["name", "version"]),
+  })
+    .index("by_name", ["name"])
+    .index("by_name_and_version", ["name", "version"]),
 });

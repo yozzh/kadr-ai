@@ -10,6 +10,8 @@ import * as messages from "./messages";
 import * as projects from "./projects";
 import * as questions from "./questions";
 import * as users from "./users";
+import { parseThreadState } from "./supervisorState";
+import { listAvailableTools } from "./toolContracts";
 import httpSource from "./http.ts?raw";
 import authSource from "./auth.ts?raw";
 
@@ -490,6 +492,72 @@ test("failed supervisor Retry links one new attempt to the same user message", a
   expect(retry?.sourceMessageId).toBe(sent.message._id);
   expect(retry?.attempt).toBe(2);
   expect((await owner.query(api.messages.list, { projectId: project._id }))).toHaveLength(1);
+  const resend = await owner.mutation(api.messages.send, {
+    projectId: project._id,
+    body: "ignored resend body",
+    clientMessageId: "retry-turn",
+  });
+  expect(resend.message._id).toBe(sent.message._id);
+  expect(resend.job?._id).toBe(sent.job?._id);
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
+test("supervisor smoke covers completion, control state, invalid state, and safe failure", async () => {
+  const t = makeTest();
+  vi.useFakeTimers();
+  const userId = String(await insertUser(t));
+  const owner = asUser(t, userId);
+  const project = await owner.mutation(api.projects.ensure, {});
+
+  const successful = await owner.mutation(api.messages.send, {
+    projectId: project._id, body: "Hello", clientMessageId: "success",
+  });
+  const successfulArgs = {
+    userId, projectId: project._id, jobId: successful.job!._id,
+    revisionId: successful.job!.revisionId, sourceMessageId: successful.message._id,
+  };
+  await t.mutation(internal.jobs.loadSupervisorTurn, successfulArgs);
+  await t.mutation(internal.jobs.completeSupervisor, { ...successfulArgs, body: "Hi." });
+  expect((await owner.query(api.jobs.get, { jobId: successful.job!._id }))?.status).toBe("succeeded");
+  expect((await owner.query(api.messages.list, { projectId: project._id })).at(-1)?.body).toBe("Hi.");
+
+  const control = await owner.mutation(api.messages.send, {
+    projectId: project._id, body: "Make a deck", clientMessageId: "control",
+  });
+  const controlArgs = {
+    userId, projectId: project._id, jobId: control.job!._id,
+    revisionId: control.job!.revisionId, sourceMessageId: control.message._id,
+  };
+  await t.mutation(internal.jobs.loadSupervisorTurn, controlArgs);
+  await t.mutation(internal.supervisorState.offerSkill, {
+    userId, projectId: project._id, jobId: control.job!._id,
+    skill: "presentation_onboarding",
+  });
+  const pending = parseThreadState((await owner.query(api.projects.get, { projectId: project._id })).langgraphThreadState);
+  expect(pending.pendingIntent).toBe("offer_skill:presentation_onboarding");
+  expect(listAvailableTools(pending)).toEqual(["offer_skill", "accept_skill_offer", "clear_skill"]);
+  expect(parseThreadState((await owner.query(api.projects.get, { projectId: project._id })).langgraphThreadState)).toEqual(pending);
+  await owner.mutation(api.supervisorState.acceptSkillOffer, { projectId: project._id });
+  const active = parseThreadState((await owner.query(api.projects.get, { projectId: project._id })).langgraphThreadState);
+  expect(active.activeSkill).toBe("presentation_onboarding");
+  expect(listAvailableTools(active)).toEqual(["clear_skill"]);
+  await t.mutation(internal.supervisorState.clearSkill, {
+    userId, projectId: project._id, jobId: control.job!._id,
+  });
+  expect(parseThreadState((await owner.query(api.projects.get, { projectId: project._id })).langgraphThreadState).activeSkill).toBeNull();
+  expect(() => parseThreadState({ schemaVersion: 2 })).toThrow(/INVALID_THREAD_STATE/);
+
+  const failing = await owner.mutation(api.messages.send, {
+    projectId: project._id, body: "Provider failure", clientMessageId: "failure",
+  });
+  await t.action(internal.supervisor.runSupervisor, {
+    userId, projectId: project._id, jobId: failing.job!._id,
+    revisionId: failing.job!.revisionId, sourceMessageId: failing.message._id,
+  });
+  const failed = await owner.query(api.jobs.get, { jobId: failing.job!._id });
+  expect(failed?.status).toBe("failed");
+  expect(failed?.error).toBe("SUPERVISOR_FAILED");
   vi.clearAllTimers();
   vi.useRealTimers();
 });

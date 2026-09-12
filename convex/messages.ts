@@ -39,10 +39,12 @@ export const send = mutation({
       .unique();
 
     if (existing !== null) {
-      const job = await ctx.db.query("jobs")
+      const jobs = await ctx.db.query("jobs")
         .withIndex("by_projectId_and_sourceMessageId", (q) =>
           q.eq("projectId", args.projectId).eq("sourceMessageId", existing._id))
-        .unique();
+        .collect();
+      const job = jobs.find((candidate) => candidate.attempt === 1) ??
+        jobs.sort((a, b) => a.createdAt - b.createdAt || (a._id < b._id ? -1 : 1))[0] ?? null;
       return { message: existing, job };
     }
 

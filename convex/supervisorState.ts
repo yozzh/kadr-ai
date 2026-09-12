@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, mutation } from "./_generated/server";
+import { ownedOrNotFound, requireUser } from "./authz";
 import { OFFERABLE_SKILL } from "./toolIds";
 
 export type ThreadStateV1 = {
@@ -57,6 +58,18 @@ async function ownedTurn(ctx: any, args: any) {
   return { project, state: parseThreadState(project.langgraphThreadState) };
 }
 
+function acceptedState(state: ThreadStateV1): ThreadStateV1 {
+  if (state.pendingIntent !== `offer_skill:${OFFERABLE_SKILL}`) {
+    throw new ConvexError("TOOL_NOT_AVAILABLE");
+  }
+  return {
+    schemaVersion: 1,
+    activeSkill: OFFERABLE_SKILL,
+    skillVersion: 1,
+    pendingIntent: null,
+  };
+}
+
 export const offerSkill = internalMutation({
   args: { ...controlArgs, skill: v.string() },
   handler: async (ctx, args) => {
@@ -71,19 +84,24 @@ export const offerSkill = internalMutation({
   },
 });
 
-export const acceptSkillOffer = internalMutation({
+export const acceptSkillOfferInternal = internalMutation({
   args: controlArgs,
   handler: async (ctx, args) => {
     const { state } = await ownedTurn(ctx, args);
-    if (state.pendingIntent !== `offer_skill:${OFFERABLE_SKILL}`) {
-      throw new ConvexError("TOOL_NOT_AVAILABLE");
-    }
-    await ctx.db.patch(args.projectId, {
-      langgraphThreadState: {
-        schemaVersion: 1, activeSkill: OFFERABLE_SKILL, skillVersion: 1, pendingIntent: null,
-      },
-    });
+    await ctx.db.patch(args.projectId, { langgraphThreadState: acceptedState(state) });
     return "Skill accepted.";
+  },
+});
+
+export const acceptSkillOffer = mutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    const project = ownedOrNotFound(await ctx.db.get(args.projectId), userId);
+    const state = parseThreadState(project.langgraphThreadState);
+    const next = acceptedState(state);
+    await ctx.db.patch(args.projectId, { langgraphThreadState: next });
+    return next;
   },
 });
 
