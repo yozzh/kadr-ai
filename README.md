@@ -36,4 +36,10 @@ deployment:
 
 `https://vivid-mockingbird-632.eu-west-1.convex.cloud`
 
+UI: https://kadr-vci5.onrender.com
+
+Google OAuth redirect:
+
+`https://<kadr-ai-prod>.convex.site/api/auth/callback/google`
+
 Local `npm run dev` stays on the `brave-koala-766` cloud dev deployment.

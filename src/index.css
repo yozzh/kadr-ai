@@ -1,7 +1,7 @@
 :root {
-  color: #e8e4dc;
-  background: #14130f;
-  font: 18px/1.45 "Segoe UI", system-ui, sans-serif;
+  color: #102018;
+  background: #f4f1ea;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
 }
 
 * {
@@ -12,57 +12,50 @@ body {
   margin: 0;
 }
 
-#root {
-  min-height: 100svh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-}
-
-main {
-  max-width: 36rem;
+.page {
+  max-width: 430px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
 }
 
 .eyebrow {
-  margin: 0 0 8px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 0.75rem;
-  color: #c4a574;
+  color: #5c6b62;
 }
 
-h1 {
-  margin: 0 0 12px;
-  font-size: 2rem;
-  font-weight: 560;
-  letter-spacing: -0.03em;
+h1,
+h2 {
+  font-weight: 650;
+  line-height: 1.2;
 }
 
+.lede,
+ol,
 p {
-  margin: 0 0 16px;
-  color: #b7b2a8;
+  line-height: 1.45;
 }
 
 code {
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: ui-monospace, "Cascadia Code", monospace;
   font-size: 0.9em;
-  color: #f3efe6;
 }
 
-.status {
-  display: inline-block;
-  margin: 0;
-  padding: 6px 10px;
-  border: 1px solid #3a362e;
+button {
+  appearance: none;
+  border: 0;
+  background: #173326;
+  color: #f4f1ea;
+  padding: 12px 16px;
   border-radius: 999px;
-  font-size: 0.85rem;
+  font: inherit;
 }
 
-.status[data-state="ok"] {
-  border-color: #3f6b4a;
-  color: #b7d7bc;
+button:disabled {
+  opacity: 0.55;
 }
 
-.status[data-state="loading"] {
-  color: #8d887d;
+.error {
+  color: #8a1f11;
 }
