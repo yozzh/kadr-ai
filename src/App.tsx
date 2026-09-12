@@ -855,7 +855,7 @@ function ProjectPane({
                 <p>{selected.body}</p>
               </div>
             </article>
-            <button type="button" className="slide-fab" aria-label={`Comment on Slide ${selectedIndex + 1}`} onClick={() => onComment(selected._id, selectedIndex + 1)}>+</button>
+            <button type="button" className="slide-fab" aria-label={`Comment on Slide ${selectedIndex + 1}`} onClick={() => onComment(selected._id, selectedIndex + 1)}><IconChat /></button>
           </section>
           <div className="slide-controls">
             <button type="button" aria-label="Previous slide" disabled={selectedIndex === 0} onClick={() => go(selectedIndex - 1)}>Previous</button>
@@ -869,6 +869,11 @@ function ProjectPane({
         <main className="project-status">
           <p className="error">Couldn't build the presentation slides.</p>
           <button type="button" className="retry-btn" onClick={() => void retrySlides({ jobId: deck.job!._id })}>Retry</button>
+        </main>
+      ) : deck?.job?.status === "queued" || deck?.job?.status === "running" ? (
+        <main className="project-status" aria-live="polite">
+          <div className="skeleton-deck" aria-hidden="true" />
+          <p>Building slides…</p>
         </main>
       ) : (
         <main className="project-empty">
