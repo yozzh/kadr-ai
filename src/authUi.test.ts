@@ -1,22 +1,121 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import {
+  APP_VERSION,
   AUTH_RETURN_PARAM,
+  currentOriginUrl,
   identityLabel,
+  isEmbeddedWebView,
+  openSameOriginOutsideWebView,
+  probeRequested,
   returnedOAuthError,
   SAFE_SIGN_IN_ERROR,
 } from "./authUi";
 import appSource from "./App.tsx?raw";
 import mainSource from "./main.tsx?raw";
+import indexHtml from "../index.html?raw";
 
-test("guest sees login and not chat, project, or deck", () => {
-  expect(appSource).toContain("Войти через Google");
+const indexCss = readFileSync(new URL("./index.css", import.meta.url), "utf8");
+
+test("guest sees Sign in with Google and not chat, project, or deck", () => {
+  expect(appSource).toContain("Sign in with Google");
+  expect(appSource).toContain('signIn("google"');
+  expect(appSource).toContain("Kadr");
   expect(appSource).toContain('isAuthenticated ? {} : "skip"');
+  expect(appSource).not.toContain("Войти через Google");
   expect(appSource.toLowerCase()).not.toContain("колода");
   expect(appSource).not.toContain("intent://");
   expect(appSource).not.toMatch(/чат сообщений|ваш проект/i);
 });
 
-test("oauth failure stays closed with a safe retry message", () => {
+test("embedded webview shows Open in browser and never starts Google", () => {
+  expect(isEmbeddedWebView("Mozilla/5.0 Instagram 192.168.1.2.80")).toBe(true);
+  expect(isEmbeddedWebView("Mozilla/5.0 FBAN/FBIOS")).toBe(true);
+  expect(isEmbeddedWebView("Mozilla/5.0 Line/13.0.0")).toBe(true);
+  expect(
+    isEmbeddedWebView(
+      "Mozilla/5.0 (Linux; Android 13; Pixel 7; wv) AppleWebKit/537.36",
+    ),
+  ).toBe(true);
+  expect(
+    isEmbeddedWebView(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0.0.0",
+    ),
+  ).toBe(false);
+  expect(appSource).toContain(
+    "const embedded = isEmbeddedWebView(navigator.userAgent)",
+  );
+  expect(appSource).toContain("Open in browser");
+  expect(appSource).toContain("disabled={embedded}");
+  expect(appSource).toMatch(
+    /if \(isEmbeddedWebView\(navigator\.userAgent\)\) \{\s*return;/,
+  );
+  expect(appSource).not.toContain("intent://");
+  expect(appSource).not.toContain("Error 403");
+});
+
+test("open in browser stays on the same origin and never uses intent://", async () => {
+  const url = currentOriginUrl({
+    origin: "https://kadr.example",
+    pathname: "/",
+    search: "",
+    hash: "",
+  });
+  expect(url).toBe("https://kadr.example/");
+  expect(url).not.toContain("intent://");
+  expect(appSource).not.toContain("intent://");
+  expect(appSource).toContain("setAuthError(url)");
+
+  await expect(
+    openSameOriginOutsideWebView({
+      url,
+      openWindow: () => ({ closed: false }),
+      copyText: async () => {
+        throw new Error("should not copy when a window opens");
+      },
+    }),
+  ).resolves.toBe("opened");
+
+  let copied = "";
+  await expect(
+    openSameOriginOutsideWebView({
+      url,
+      openWindow: () => null,
+      copyText: async (text) => {
+        copied = text;
+      },
+    }),
+  ).resolves.toBe("copied");
+  expect(copied).toBe(url);
+
+  copied = "";
+  await expect(
+    openSameOriginOutsideWebView({
+      url,
+      openWindow: () => {
+        throw new Error("blocked");
+      },
+      copyText: async (text) => {
+        copied = text;
+      },
+    }),
+  ).resolves.toBe("copied");
+  expect(copied).toBe(url);
+
+  copied = "";
+  await expect(
+    openSameOriginOutsideWebView({
+      url,
+      openWindow: () => ({ closed: true }),
+      copyText: async (text) => {
+        copied = text;
+      },
+    }),
+  ).resolves.toBe("copied");
+  expect(copied).toBe(url);
+});
+
+test("oauth failure stays closed with a safe English retry message", () => {
   expect(returnedOAuthError("?error=access_denied")).toBe(SAFE_SIGN_IN_ERROR);
   expect(
     returnedOAuthError("?error=server&error_description=AUTH_GOOGLE_SECRET"),
@@ -25,12 +124,14 @@ test("oauth failure stays closed with a safe retry message", () => {
   expect(returnedOAuthError(`?${AUTH_RETURN_PARAM}=1&code=ok`)).toBeNull();
   expect(returnedOAuthError(`?${AUTH_RETURN_PARAM}=1`, true)).toBeNull();
   expect(returnedOAuthError("")).toBeNull();
+  expect(SAFE_SIGN_IN_ERROR).toMatch(/sign in/i);
+  expect(SAFE_SIGN_IN_ERROR).not.toMatch(/[А-яЁё]/);
   expect(SAFE_SIGN_IN_ERROR).not.toContain("AUTH_GOOGLE_SECRET");
   expect(appSource).toContain("SAFE_SIGN_IN_ERROR");
-  expect(appSource).toContain("Войти через Google");
+  expect(appSource).toContain("Sign in with Google");
 });
 
-test("signed-in identity prefers name then email; session survives reload via provider", () => {
+test("signed-in Settings shows name or email, version, and Log out", () => {
   expect(identityLabel({ name: "Анна", email: "a@example.com" })).toBe("Анна");
   expect(identityLabel({ name: "  ", email: "a@example.com" })).toBe(
     "a@example.com",
@@ -40,5 +141,54 @@ test("signed-in identity prefers name then email; session survives reload via pr
   expect(mainSource).toContain("ConvexAuthProvider");
   expect(appSource).toContain("identityLabel");
   expect(appSource).toContain("signOut");
-  expect(appSource).toContain("Выйти");
+  expect(appSource).toContain("Log out");
+  expect(appSource).not.toContain("Выйти");
+  expect(appSource).toContain("Chat");
+  expect(appSource).toContain("Project");
+  expect(appSource).toContain("Settings");
+  expect(appSource).toContain("APP_VERSION");
+  expect(APP_VERSION).toBe("0.0.0");
+  expect(appSource).not.toContain("1.0.0 (42)");
+});
+
+test("probe is off the default signed-in Settings tree", () => {
+  expect(probeRequested("")).toBe(false);
+  expect(probeRequested("?foo=1")).toBe(false);
+  expect(probeRequested("?probe=1")).toBe(true);
+  expect(appSource).toMatch(
+    /const showProbe =\s*isAuthenticated && probeRequested\(window\.location\.search\)/,
+  );
+  expect(appSource).toMatch(/questions\.list[\s\S]*showProbe \? \{\} : "skip"/);
+  expect(appSource).toMatch(/if \(showProbe\) \{/);
+  expect(appSource).toContain("Контракт Convex");
+  const guestStart = appSource.indexOf("if (!isAuthenticated)");
+  const probeStart = appSource.indexOf("if (showProbe)");
+  expect(guestStart).toBeGreaterThan(-1);
+  expect(probeStart).toBeGreaterThan(guestStart);
+  const guestBranch = appSource.slice(guestStart, probeStart);
+  expect(guestBranch).not.toContain("tabbar");
+  expect(guestBranch).not.toContain("Chat");
+  expect(guestBranch).not.toContain("Project");
+});
+
+test("index.html and index.css ship English Kadr chrome fonts", () => {
+  expect(indexHtml).toContain('lang="en"');
+  expect(indexHtml).toContain("<title>Kadr</title>");
+  expect(indexHtml).toContain("Inter");
+  expect(indexHtml).toContain("Manrope");
+  expect(indexCss).toMatch(/--font-body:\s*Inter/);
+  expect(indexCss).toMatch(/--font-display:\s*Manrope/);
+  expect(indexCss).not.toMatch(/Palatino|Iowan/);
+});
+
+test("log out returns to guest chrome and hides probe identity", () => {
+  expect(appSource).toMatch(
+    /async function handleSignOut\(\) \{\s*await signOut\(\);/,
+  );
+  expect(appSource).toMatch(
+    /if \(isAuthenticated\) \{\s*return;\s*\}\s*setProjectId\(null\);\s*setJobId\(null\);/,
+  );
+  expect(appSource).toMatch(
+    /if \(!isAuthenticated\) \{[\s\S]*Sign in with Google[\s\S]*if \(showProbe\)/,
+  );
 });

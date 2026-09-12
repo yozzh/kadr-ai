@@ -1,20 +1,30 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type SVGProps } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import {
+  APP_VERSION,
   AUTH_RETURN_PARAM,
+  currentOriginUrl,
   identityLabel,
+  isEmbeddedWebView,
+  openSameOriginOutsideWebView,
+  probeRequested,
   returnedOAuthError,
   SAFE_SIGN_IN_ERROR,
-} from "./authUi.ts";
+} from "./authUi";
 
 export default function App() {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const { signIn, signOut } = useAuthActions();
   const me = useQuery(api.users.me, isAuthenticated ? {} : "skip");
-  const questions = useQuery(api.questions.list, isAuthenticated ? {} : "skip");
+  const showProbe =
+    isAuthenticated && probeRequested(window.location.search);
+  const questions = useQuery(
+    api.questions.list,
+    showProbe ? {} : "skip",
+  );
   const seed = useMutation(api.questions.seed);
   const startProbe = useMutation(api.jobs.startProbe);
   const [projectId, setProjectId] = useState<Id<"projects"> | null>(null);
@@ -23,6 +33,7 @@ export default function App() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [seedError, setSeedError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const embedded = isEmbeddedWebView(navigator.userAgent);
 
   const project = useQuery(
     api.projects.get,
@@ -69,7 +80,7 @@ export default function App() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!showProbe) {
       return;
     }
     void seed({}).catch((error) => {
@@ -77,7 +88,7 @@ export default function App() {
         error instanceof Error ? error.message : "Не удалось выполнить seed",
       );
     });
-  }, [isAuthenticated, seed]);
+  }, [showProbe, seed]);
 
   async function retryProbe() {
     setPending(true);
@@ -96,11 +107,27 @@ export default function App() {
   }
 
   async function handleSignIn() {
+    if (isEmbeddedWebView(navigator.userAgent)) {
+      return;
+    }
     setAuthError(null);
     try {
       await signIn("google", { redirectTo: `?${AUTH_RETURN_PARAM}=1` });
     } catch {
       setAuthError(SAFE_SIGN_IN_ERROR);
+    }
+  }
+
+  async function handleOpenInBrowser() {
+    const url = currentOriginUrl(window.location);
+    try {
+      await openSameOriginOutsideWebView({
+        url,
+        openWindow: (href) => window.open(href, "_blank", "noopener,noreferrer"),
+        copyText: (text) => navigator.clipboard.writeText(text),
+      });
+    } catch {
+      setAuthError(url);
     }
   }
 
@@ -116,83 +143,286 @@ export default function App() {
   if (isLoading) {
     return (
       <main className="page">
-        <p>Загрузка сессии…</p>
+        <p>Loading…</p>
       </main>
     );
   }
 
   if (!isAuthenticated) {
     return (
+      <div className="app">
+        {embedded ? (
+          <button
+            type="button"
+            className="webview-banner"
+            onClick={() => void handleOpenInBrowser()}
+          >
+            <IconExternal className="webview-banner__icon" />
+            <span className="webview-banner__copy">
+              <span className="webview-banner__title">Open in browser</span>
+              <span className="webview-banner__hint">
+                Google sign-in is not available inside this app
+              </span>
+            </span>
+            <IconChevron className="webview-banner__chevron" />
+          </button>
+        ) : null}
+        <main className={embedded ? "auth auth--webview" : "auth"}>
+          <div>
+            <div className="brand">
+              <span className="brand__mark">K</span>
+              <span className="brand__name">Kadr</span>
+            </div>
+            <div className="auth__copy">
+              <p className="eyebrow">
+                {embedded ? "Secure sign-in" : "A pitch from a conversation"}
+              </p>
+              <h1 className="auth__title">
+                {embedded
+                  ? "Continue in your browser"
+                  : "Build your pitch by talking to Kadr"}
+              </h1>
+              <p className="auth__lede">
+                {embedded
+                  ? "Return to Kadr after you sign in — your project will open automatically."
+                  : "Kadr asks questions, assembles a vertical deck, and prepares the video — no templates, no timeline."}
+              </p>
+              {authError ? <p className="error">{authError}</p> : null}
+            </div>
+          </div>
+          <div className="auth__actions">
+            <button
+              type="button"
+              className="google-btn"
+              disabled={embedded}
+              onClick={() => void handleSignIn()}
+            >
+              <span className="google-btn__g">G</span>
+              Sign in with Google
+            </button>
+            <p className="auth__note">
+              {embedded
+                ? "This button does not start inside an embedded WebView."
+                : "By continuing, you agree to the terms of use."}
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (showProbe) {
+    const label = identityLabel(me);
+    return (
       <main className="page">
-        <h1>Вход</h1>
+        <p className="eyebrow">Служебный probe</p>
+        <h1>Контракт Convex</h1>
         <p className="lede">
-          Без сессии доступен только вход. Служебный probe откроется после
-          Google.
+          Каталог вопросов и статус служебного probe-job. Это не проект
+          основателя.
         </p>
-        {authError ? <p className="error">{authError}</p> : null}
-        <button type="button" onClick={() => void handleSignIn()}>
-          Войти через Google
+        <p>{label ?? "Сессия активна"}</p>
+        <button type="button" onClick={() => void handleSignOut()}>
+          Log out
         </button>
+
+        <section>
+          <h2>Вопросы</h2>
+          {seedError ? (
+            <p className="error">{seedError}</p>
+          ) : questions === undefined ? (
+            <p>Загрузка каталога…</p>
+          ) : questions.length === 0 ? (
+            <p>Каталог пуст — выполняется seed.</p>
+          ) : (
+            <ol>
+              {questions.map((question) => (
+                <li key={question._id}>
+                  <code>{question.questionId}</code>
+                  <span> — {question.title}</span>
+                  {question.required ? "" : " (необязательный)"}
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+        <section>
+          <h2>Probe-job</h2>
+          {job === undefined && jobId ? (
+            <p>Загрузка статуса…</p>
+          ) : job ? (
+            <p>
+              Статус: <strong>{job.status}</strong>
+              {job.error ? ` — ${job.error}` : ""}
+              {project?.currentRevisionId
+                ? ` · ревизия ${project.currentRevisionId}`
+                : ""}
+            </p>
+          ) : (
+            <p>Probe ещё не запускался.</p>
+          )}
+          {actionError ? <p className="error">{actionError}</p> : null}
+          <button type="button" onClick={() => void retryProbe()} disabled={pending}>
+            Повторить
+          </button>
+        </section>
       </main>
     );
   }
 
   const label = identityLabel(me);
+  const initial = label ? ([...label][0] ?? "").toUpperCase() : "";
 
   return (
-    <main className="page">
-      <p className="eyebrow">Служебный probe</p>
-      <h1>Контракт Convex</h1>
-      <p className="lede">
-        Каталог вопросов и статус служебного probe-job. Это не проект
-        основателя.
-      </p>
-      <p>{label ?? "Сессия активна"}</p>
-      <button type="button" onClick={() => void handleSignOut()}>
-        Выйти
-      </button>
-
-      <section>
-        <h2>Вопросы</h2>
-        {seedError ? (
-          <p className="error">{seedError}</p>
-        ) : questions === undefined ? (
-          <p>Загрузка каталога…</p>
-        ) : questions.length === 0 ? (
-          <p>Каталог пуст — выполняется seed.</p>
-        ) : (
-          <ol>
-            {questions.map((question) => (
-              <li key={question._id}>
-                <code>{question.questionId}</code>
-                <span> — {question.title}</span>
-                {question.required ? "" : " (необязательный)"}
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-
-      <section>
-        <h2>Probe-job</h2>
-        {job === undefined && jobId ? (
-          <p>Загрузка статуса…</p>
-        ) : job ? (
-          <p>
-            Статус: <strong>{job.status}</strong>
-            {job.error ? ` — ${job.error}` : ""}
-            {project?.currentRevisionId
-              ? ` · ревизия ${project.currentRevisionId}`
-              : ""}
-          </p>
-        ) : (
-          <p>Probe ещё не запускался.</p>
-        )}
-        {actionError ? <p className="error">{actionError}</p> : null}
-        <button type="button" onClick={() => void retryProbe()} disabled={pending}>
-          Повторить
+    <div className="app">
+      <header className="settings-header">
+        <h1>Settings</h1>
+      </header>
+      <main className="settings">
+        <div className="settings__fields">
+          <section>
+            <p className="field-label">Display name</p>
+            <div className="name-field">
+              <div className="name-field__who">
+                {initial ? (
+                  <span className="name-field__initial">{initial}</span>
+                ) : null}
+                {label ? <span className="name-field__label">{label}</span> : null}
+              </div>
+              <span className="name-field__pencil" aria-hidden="true">
+                <IconPencil />
+              </span>
+            </div>
+          </section>
+          <section>
+            <p className="field-label">About</p>
+            <div className="version-row">
+              <span className="version-row__title">App version</span>
+              <span className="version-row__value">{APP_VERSION}</span>
+            </div>
+          </section>
+        </div>
+        <button type="button" className="logout-btn" onClick={() => void handleSignOut()}>
+          <IconLogout />
+          Log out
         </button>
-      </section>
-    </main>
+      </main>
+      <nav className="tabbar" aria-label="Kadr">
+        <button type="button" className="tab">
+          <IconChat />
+          Chat
+        </button>
+        <button type="button" className="tab">
+          <IconProject />
+          Project
+        </button>
+        <button type="button" className="tab tab--active" aria-current="page">
+          <IconSettings />
+          Settings
+        </button>
+      </nav>
+    </div>
+  );
+}
+
+function IconExternal(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path
+        d="M15 3h6v6M21 3l-9 9M10 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconChevron(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path
+        d="m9 6 6 6-6 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconPencil() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconLogout() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3M16 17l5-5-5-5M21 12H9"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconChat() {
+  return (
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M7.9 20A9 9 0 1 0 4 16.1L3 21Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconProject() {
+  return (
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect
+        x="3"
+        y="3"
+        width="18"
+        height="18"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path d="M3 9h18M9 21V9" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function IconSettings() {
+  return (
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
