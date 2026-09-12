@@ -227,3 +227,14 @@ test("chat exposes compact onboarding consent and progress actions", () => {
   expect(appSource).toContain("api.supervisorState.acceptSkillOffer");
   expect(appSource).toContain("api.brief.progress");
 });
+
+test("chat exposes brief-ready plan generation, progress, and explicit safe retry", () => {
+  expect(appSource).toContain("api.plan.generate");
+  expect(appSource).toContain("api.plan.current");
+  expect(appSource).toContain("api.plan.retry");
+  expect(appSource).toContain("Your brief is ready");
+  expect(appSource).toContain("Generate plan");
+  expect(appSource).toContain("Building…");
+  expect(appSource).toContain("Couldn't build the presentation plan.");
+  expect(appSource).not.toContain("PLAN_GENERATION_FAILED");
+});

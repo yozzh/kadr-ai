@@ -51,12 +51,17 @@ export function buildEnvelope(
   briefComplete = false,
   briefAnswers: Array<{ questionId: string; value: string; unknown: boolean }> = [],
 ) {
-  const tools = listAvailableTools(state, briefComplete);
+  const tools = listAvailableTools(
+    state,
+    briefComplete,
+    project.status,
+    project.confirmedBriefRevisionId,
+  );
   const fragment = state.activeSkill === "presentation_onboarding"
     ? `${SKILL_CATALOG[0].promptFragment}\nSaved brief state for this turn: ${JSON.stringify(briefAnswers.map(({ questionId, value, unknown }) => ({ questionId, value, unknown })))}.`
     : "";
   return {
     tools,
-    text: `<envelope>\nproject_status: ${project.status}\nactive_skill: ${state.activeSkill ?? "empty"}\nskill_version: ${state.skillVersion ?? "empty"}\npending_intent: ${state.pendingIntent ?? "empty"}\navailable_tools: ${tools.join(",")}\nbrief_confirmed: ${project.confirmedBriefRevisionId ? "yes" : "no"}\n</envelope>${fragment ? `\n\n${fragment}` : ""}`,
+    text: `<envelope>\nproject_status: ${project.status}\nactive_skill: ${state.activeSkill ?? "empty"}\nskill_version: ${state.skillVersion ?? "empty"}\npending_intent: ${state.pendingIntent ?? "empty"}\navailable_tools: ${tools.join(",")}\nbrief_confirmed: ${project.confirmedBriefRevisionId ? "yes" : "no"}\nconfirmed_brief_revision_id: ${project.confirmedBriefRevisionId ?? "empty"}\n</envelope>${fragment ? `\n\n${fragment}` : ""}`,
   };
 }

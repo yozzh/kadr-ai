@@ -11,6 +11,7 @@ import * as projects from "./projects";
 import * as questions from "./questions";
 import * as users from "./users";
 import * as brief from "./brief";
+import * as plan from "./plan";
 import { parseThreadState } from "./supervisorState";
 import { listAvailableTools } from "./toolContracts";
 import { buildEnvelope, MAIN_PROMPT } from "./supervisorPrompt";
@@ -92,6 +93,7 @@ test("public api is query/mutation only; auth is google plus http routes", () =>
     ...publicFunctions(projects),
     ...publicFunctions(questions),
     ...publicFunctions(brief),
+    ...publicFunctions(plan),
     ...publicFunctions(users),
   ]) {
     const typed = fn as { isAction?: boolean; isHttpAction?: boolean };
@@ -687,6 +689,61 @@ test("onboarding saves provenance, forks corrections, and confirms without a pla
   expect(confirmed.confirmedBriefRevisionId).toBe(corrected.revisionId);
   expect(parseThreadState(confirmed.langgraphThreadState).activeSkill).toBeNull();
   expect((await t.run(async (ctx) => ctx.db.query("jobs").collect())).filter((job) => job.kind !== "supervisor")).toHaveLength(0);
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
+test("presentation plan is gated, idempotent, ordered, retryable, and stale-safe", async () => {
+  const t = makeTest();
+  vi.useFakeTimers();
+  const userId = String(await insertUser(t));
+  const owner = asUser(t, userId);
+  const project = await owner.mutation(api.projects.ensure, {});
+  await expectConvexCode(owner.mutation(api.plan.generate, {
+    projectId: project._id, confirmedBriefRevisionId: project.currentRevisionId!,
+  }), "TOOL_NOT_AVAILABLE");
+  const briefRevisionId = "brief_confirmed";
+  await t.run(async (ctx) => {
+    await ctx.db.patch(project._id, { status: "brief_ready", confirmedBriefRevisionId: briefRevisionId });
+    await ctx.db.insert("briefAnswers", {
+      userId, projectId: project._id, questionId: "q_one_liner", revisionId: briefRevisionId,
+      value: "A factual pitch assistant", unknown: false, messageId: await ctx.db.insert("messages", {
+        userId, projectId: project._id, role: "user", body: "A factual pitch assistant", createdAt: Date.now(),
+      }),
+    });
+  });
+  const ready = await owner.query(api.projects.get, { projectId: project._id });
+  const idleState = parseThreadState(ready.langgraphThreadState);
+  expect(listAvailableTools(idleState, false, ready.status, ready.confirmedBriefRevisionId)).toContain("generate_presentation_plan");
+
+  const first = await owner.mutation(api.plan.generate, { projectId: project._id, confirmedBriefRevisionId: briefRevisionId });
+  const duplicate = await owner.mutation(api.plan.generate, { projectId: project._id, confirmedBriefRevisionId: briefRevisionId });
+  expect(duplicate?._id).toBe(first?._id);
+  const queuedProject = await owner.query(api.projects.get, { projectId: project._id });
+  const firstArgs = {
+    userId, projectId: project._id, jobId: first!._id, briefRevisionId,
+    planRevisionId: queuedProject.currentPlanRevisionId!,
+  };
+  await t.mutation(internal.plan.load, firstArgs);
+  await expectConvexCode(t.mutation(internal.plan.apply, { ...firstArgs, items: [] }), "PLAN_INVALID");
+  await t.mutation(internal.plan.fail, firstArgs);
+  expect((await owner.query(api.plan.current, { projectId: project._id })).job?.error).toBe("PLAN_GENERATION_FAILED");
+
+  const retry = await owner.mutation(api.plan.retry, { jobId: first!._id });
+  expect(retry?.retryOfJobId).toBe(first?._id);
+  const retryProject = await owner.query(api.projects.get, { projectId: project._id });
+  expect(await t.mutation(internal.plan.apply, { ...firstArgs, items: [{ talkingPoint: "Late" }] })).toEqual({ applied: false });
+  expect(retryProject.currentPlanJobId).toBe(retry?._id);
+  const retryArgs = { ...firstArgs, jobId: retry!._id, planRevisionId: retryProject.currentPlanRevisionId! };
+  await t.mutation(internal.plan.load, retryArgs);
+  await t.mutation(internal.plan.apply, { ...retryArgs, items: [{ talkingPoint: "Problem" }, { talkingPoint: "Solution" }] });
+  const done = await owner.query(api.plan.current, { projectId: project._id });
+  expect(done.job?.status).toBe("succeeded");
+  expect(done.items.map(({ sort, talkingPoint, jobId }) => ({ sort, talkingPoint, jobId }))).toEqual([
+    { sort: 0, talkingPoint: "Problem", jobId: retry!._id },
+    { sort: 1, talkingPoint: "Solution", jobId: retry!._id },
+  ]);
+  expect((await owner.query(api.projects.get, { projectId: project._id })).status).toBe("plan_ready");
   vi.clearAllTimers();
   vi.useRealTimers();
 });

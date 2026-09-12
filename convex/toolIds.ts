@@ -11,5 +11,7 @@ export const BRIEF_TOOL_IDS = [
   "confirm_brief",
 ] as const;
 export type BriefToolId = (typeof BRIEF_TOOL_IDS)[number];
-export type SupervisorToolId = ControlToolId | BriefToolId;
+export const PLAN_TOOL_IDS = ["generate_presentation_plan"] as const;
+export type PlanToolId = (typeof PLAN_TOOL_IDS)[number];
+export type SupervisorToolId = ControlToolId | BriefToolId | PlanToolId;
 export const OFFERABLE_SKILL = "presentation_onboarding" as const;

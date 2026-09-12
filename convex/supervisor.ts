@@ -66,6 +66,16 @@ export const runSupervisor = internalAction({
           if (!available.has("confirm_brief")) throw new Error("TOOL_NOT_AVAILABLE");
           return await ctx.runMutation(internal.brief.confirmBriefInternal, { ...common, sourceMessageId: args.sourceMessageId });
         }, { name: "confirm_brief", description: "Confirm the complete active brief revision without generating a plan.", schema: { type: "object", properties: {}, additionalProperties: false } }),
+        tool(async () => {
+          if (!available.has("generate_presentation_plan")) throw new Error("TOOL_NOT_AVAILABLE");
+          const briefRevisionId = turn.project.confirmedBriefRevisionId;
+          if (!briefRevisionId) throw new Error("TOOL_NOT_AVAILABLE");
+          return await ctx.runMutation(internal.plan.enqueueInternal, {
+            userId: args.userId,
+            projectId: args.projectId,
+            briefRevisionId,
+          });
+        }, { name: "generate_presentation_plan", description: "Queue generation of a presentation plan from the confirmed brief.", schema: { type: "object", properties: {}, additionalProperties: false } }),
       ].filter((candidate) => available.has(candidate.name as never));
       const apiKey = process.env.XAI_API_KEY;
       const modelName = process.env.XAI_MODEL;

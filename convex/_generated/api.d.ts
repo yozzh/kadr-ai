@@ -21,6 +21,8 @@ import type * as http from "../http.js";
 import type * as jobs from "../jobs.js";
 import type * as messageLimits from "../messageLimits.js";
 import type * as messages from "../messages.js";
+import type * as plan from "../plan.js";
+import type * as planAction from "../planAction.js";
 import type * as projects from "../projects.js";
 import type * as questions from "../questions.js";
 import type * as skills from "../skills.js";
@@ -48,6 +50,8 @@ declare const fullApi: ApiFromModules<{
   jobs: typeof jobs;
   messageLimits: typeof messageLimits;
   messages: typeof messages;
+  plan: typeof plan;
+  planAction: typeof planAction;
   projects: typeof projects;
   questions: typeof questions;
   skills: typeof skills;

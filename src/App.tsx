@@ -452,6 +452,25 @@ function ChatPane({
   const acceptOnboarding = useMutation(api.supervisorState.acceptSkillOffer);
   const stopOnboarding = useMutation(api.supervisorState.clearSkillForUser);
   const [briefActionPending, setBriefActionPending] = useState(false);
+  const plan = useQuery(
+    api.plan.current,
+    current ? { projectId: current._id } : "skip",
+  );
+  const generatePlan = useMutation(api.plan.generate);
+  const retryPlan = useMutation(api.plan.retry);
+  const [planActionPending, setPlanActionPending] = useState(false);
+
+  async function runPlanAction(action: () => Promise<unknown>) {
+    setPlanActionPending(true);
+    setSendError(null);
+    try {
+      await action();
+    } catch {
+      setSendError("Couldn't start the presentation plan. Please try again.");
+    } finally {
+      setPlanActionPending(false);
+    }
+  }
 
   async function runBriefAction(action: () => Promise<unknown>) {
     setBriefActionPending(true);
@@ -564,6 +583,26 @@ function ChatPane({
           <div className="onboarding-card__actions">
             <button type="button" className="onboarding-secondary" disabled={briefActionPending} onClick={() => void runBriefAction(() => stopOnboarding({ projectId: current._id }))}>Stop</button>
           </div>
+        </section>
+      ) : null}
+      {current && current.status === "brief_ready" && current.confirmedBriefRevisionId && !plan?.job ? (
+        <section className="onboarding-card" aria-label="Presentation plan action">
+          <div>
+            <strong>Your brief is ready</strong>
+            <span>Turn it into a presentation plan.</span>
+          </div>
+          <button type="button" className="onboarding-primary" disabled={planActionPending} onClick={() => void runPlanAction(() => generatePlan({ projectId: current._id, confirmedBriefRevisionId: current.confirmedBriefRevisionId! }))}>Generate plan</button>
+        </section>
+      ) : null}
+      {plan?.job?.status === "queued" || plan?.job?.status === "running" ? (
+        <section className="onboarding-progress" aria-live="polite">
+          <div className="onboarding-progress__copy"><span>Presentation plan</span><strong>Building…</strong></div>
+        </section>
+      ) : null}
+      {plan?.job?.status === "failed" ? (
+        <section className="supervisor-failed" role="alert">
+          <span>Couldn't build the presentation plan.</span>
+          <button type="button" disabled={planActionPending} onClick={() => void runPlanAction(() => retryPlan({ jobId: plan.job!._id }))}>Retry</button>
         </section>
       ) : null}
       <form className="composer" onSubmit={(event) => void handleSubmit(event)}>
