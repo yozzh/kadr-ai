@@ -31,6 +31,7 @@ import type * as slidesAction from "../slidesAction.js";
 import type * as supervisor from "../supervisor.js";
 import type * as supervisorPrompt from "../supervisorPrompt.js";
 import type * as supervisorState from "../supervisorState.js";
+import type * as styles from "../styles.js";
 import type * as toolContracts from "../toolContracts.js";
 import type * as toolIds from "../toolIds.js";
 import type * as users from "../users.js";
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   supervisor: typeof supervisor;
   supervisorPrompt: typeof supervisorPrompt;
   supervisorState: typeof supervisorState;
+  styles: typeof styles;
   toolContracts: typeof toolContracts;
   toolIds: typeof toolIds;
   users: typeof users;

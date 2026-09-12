@@ -62,8 +62,13 @@ export function buildEnvelope(
     project.status,
     project.confirmedBriefRevisionId,
   );
-  const fragment = state.activeSkill === "presentation_onboarding"
-    ? `${SKILL_CATALOG[0].promptFragment}\nSaved brief state for this turn: ${JSON.stringify(briefAnswers.map(({ questionId, value, unknown }) => ({ questionId, value, unknown })))}.`
+  const skill = state.activeSkill === null
+    ? undefined
+    : SKILL_CATALOG.find((candidate) => candidate.name === state.activeSkill);
+  const fragment = skill
+    ? `${skill.promptFragment}${state.activeSkill === "presentation_onboarding"
+      ? `\nSaved brief state for this turn: ${JSON.stringify(briefAnswers.map(({ questionId, value, unknown }) => ({ questionId, value, unknown })))}.`
+      : ""}`
     : "";
   return {
     tools,

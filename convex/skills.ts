@@ -13,6 +13,16 @@ Ask exactly one unanswered catalog question per turn. Do not re-ask an answered 
 Save only facts explicitly stated in the current user message with save_brief_answer. Use mark_unknown when the user does not know. A side question is not an answer. You may close multiple IDs only when the user explicitly stated each fact.
 After all required questions are closed, show a short summary split into facts, unknowns, and proposed assumptions, then ask the user to confirm or correct it. Never present assumptions as facts. Call confirm_brief only after explicit confirmation; it does not generate a plan.
 Call only tools in available_tools. Yield to the main prompt.`,
+}, {
+  name: "fill_placeholders",
+  version: 1,
+  preconditions: ["slides_ready"],
+  allowlistedTools: ["list_styles", "set_style", "generate_deck", "retry_failed_slots", "get_job"],
+  bans: ["generate_presentation_plan", "generate_slides", "update_slide"],
+  promptFragment: `You are running fill_placeholders.
+Help the user choose one visual grammar for every infographic in the deck. Call list_styles to get the trusted catalog, explain the meaningful differences in plain language, and recommend a style based only on what the user said.
+Ask for explicit confirmation before calling set_style. Pass only the confirmed catalog styleId. Setting a style never starts generation. In this version, generation tools are not yet available, so do not claim graphics were generated.
+Call only tools in available_tools. Yield to the main prompt.`,
 }] as const;
 
 export const seed = mutation({

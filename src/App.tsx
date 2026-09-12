@@ -672,14 +672,14 @@ function ChatPane({
         )}
       </main>
       {current && brief?.state.pendingIntent ? (
-        <section className="onboarding-card" aria-label="Presentation onboarding offer">
+        <section className="onboarding-card" aria-label={brief.state.pendingIntent === "offer_skill:fill_placeholders" ? "Infographic style offer" : "Presentation onboarding offer"}>
           <div>
-            <strong>Build your presentation brief</strong>
-            <span>Six quick questions · about 3 minutes</span>
+            <strong>{brief.state.pendingIntent === "offer_skill:fill_placeholders" ? "Choose one infographic style" : "Build your presentation brief"}</strong>
+            <span>{brief.state.pendingIntent === "offer_skill:fill_placeholders" ? "Compare six visual directions in Chat" : "Six quick questions · about 3 minutes"}</span>
           </div>
           <div className="onboarding-card__actions">
             <button type="button" className="onboarding-secondary" disabled={briefActionPending} onClick={() => void runBriefAction(() => stopOnboarding({ projectId: current._id }))}>Not now</button>
-            <button type="button" className="onboarding-primary" disabled={briefActionPending} onClick={() => void runBriefAction(() => acceptOnboarding({ projectId: current._id }))}>Start</button>
+            <button type="button" className="onboarding-primary" disabled={briefActionPending} onClick={() => void runBriefAction(() => acceptOnboarding({ projectId: current._id }))}>{brief.state.pendingIntent === "offer_skill:fill_placeholders" ? "Choose style" : "Start"}</button>
           </div>
         </section>
       ) : null}

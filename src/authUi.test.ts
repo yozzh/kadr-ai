@@ -228,6 +228,9 @@ test("chat exposes compact onboarding consent and progress actions", () => {
   expect(appSource).not.toContain("Confirm brief");
   expect(appSource).toContain("api.supervisorState.acceptSkillOffer");
   expect(appSource).toContain("api.brief.progress");
+  expect(appSource).toContain("Infographic style offer");
+  expect(appSource).toContain("Choose one infographic style");
+  expect(appSource).toContain("Compare six visual directions in Chat");
 });
 
 test("chat exposes brief-ready plan generation, progress, and explicit safe retry", () => {

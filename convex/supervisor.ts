@@ -10,6 +10,7 @@ import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import { buildEnvelope, MAIN_PROMPT } from "./supervisorPrompt";
 import { parseThreadState } from "./supervisorState";
+import { listStyles } from "./styles";
 
 const argsValidator = {
   userId: v.string(), projectId: v.id("projects"), jobId: v.id("jobs"),
@@ -57,7 +58,7 @@ export const runSupervisor = internalAction({
           if (!available.has("offer_skill")) throw new Error("TOOL_NOT_AVAILABLE");
           return await ctx.runMutation(internal.supervisorState.offerSkill, { ...common, skill });
         }, { name: "offer_skill", description: "Record an offer to start an offerable skill without activating it.", schema: {
-          type: "object", properties: { skill: { type: "string", enum: ["presentation_onboarding"] } }, required: ["skill"], additionalProperties: false,
+          type: "object", properties: { skill: { type: "string", enum: ["presentation_onboarding", "fill_placeholders"] } }, required: ["skill"], additionalProperties: false,
         } }),
         tool(async () => {
           if (!available.has("accept_skill_offer")) throw new Error("TOOL_NOT_AVAILABLE");
@@ -138,6 +139,21 @@ export const runSupervisor = internalAction({
             placeholderDescription: { type: "string" },
           },
           required: ["headline", "body", "placeholderDescription"],
+          additionalProperties: false,
+        } }),
+        tool(async () => {
+          if (!available.has("list_styles")) throw new Error("TOOL_NOT_AVAILABLE");
+          return listStyles();
+        }, { name: "list_styles", description: "List the six trusted infographic styles available for this deck.", schema: {
+          type: "object", properties: {}, additionalProperties: false,
+        } }),
+        tool(async ({ styleId }: { styleId: string }) => {
+          if (!available.has("set_style")) throw new Error("TOOL_NOT_AVAILABLE");
+          return await ctx.runMutation(internal.styles.setStyle, { ...common, styleId });
+        }, { name: "set_style", description: "Save an explicitly confirmed catalog style for the current deck. This does not generate images.", schema: {
+          type: "object",
+          properties: { styleId: { type: "string", enum: ["paper-ink", "dark-precision", "bold-primitives", "soft-product", "blueprint-grid", "poster-hook"] } },
+          required: ["styleId"],
           additionalProperties: false,
         } }),
       ].filter((candidate) => available.has(candidate.name as never));

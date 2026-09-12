@@ -33,6 +33,16 @@ export default defineSchema({
     currentPlanRevisionId: v.optional(v.string()),
     currentSlidesJobId: v.optional(v.id("jobs")),
     currentSlidesRevisionId: v.optional(v.string()),
+    infographicStyle: v.optional(v.object({
+      styleId: v.string(),
+      label: v.string(),
+      oneLiner: v.string(),
+      paletteRule: v.string(),
+      compositionApproach: v.string(),
+      promptPrefix: v.string(),
+      catalogVersion: v.literal(1),
+    })),
+    styleRevisionId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])

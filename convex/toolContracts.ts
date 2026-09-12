@@ -7,7 +7,10 @@ export function listAvailableTools(
   projectStatus: "empty" | "brief_ready" | "plan_ready" | "slides_ready" = "empty",
   confirmedBriefRevisionId?: string,
 ): SupervisorToolId[] {
-  if (state.activeSkill !== null) {
+  if (state.activeSkill === "fill_placeholders") {
+    return ["clear_skill", "list_styles", "set_style"];
+  }
+  if (state.activeSkill === "presentation_onboarding") {
     return briefComplete
       ? ["clear_skill", "save_brief_answer", "mark_unknown", "confirm_brief"]
       : ["clear_skill", "save_brief_answer", "mark_unknown"];

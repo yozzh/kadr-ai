@@ -20,6 +20,8 @@ import authSource from "./auth.ts?raw";
 import supervisorSource from "./supervisor.ts?raw";
 import { assertPlanToolRuntimeArgs, assertSlidesToolRuntimeArgs } from "./supervisor";
 import { validateSlides } from "./slides";
+import { SKILL_CATALOG } from "./skills";
+import { STYLE_CATALOG, listStyles } from "./styles";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -583,6 +585,87 @@ test("supervisor smoke covers completion, control state, invalid state, and safe
   const failed = await owner.query(api.jobs.get, { jobId: failing.job!._id });
   expect(failed?.status).toBe("failed");
   expect(failed?.error).toBe("SUPERVISOR_FAILED");
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
+test("infographic style skill is gated, isolated, persisted, and idempotent", async () => {
+  const t = makeTest();
+  vi.useFakeTimers();
+  const userId = String(await insertUser(t));
+  const owner = asUser(t, userId);
+  const project = await owner.mutation(api.projects.ensure, {});
+  const sent = await owner.mutation(api.messages.send, {
+    projectId: project._id, body: "Add infographics", clientMessageId: "style",
+  });
+  const runtime = { userId, projectId: project._id, jobId: sent.job!._id };
+  await t.mutation(internal.jobs.loadSupervisorTurn, {
+    ...runtime, revisionId: sent.job!.revisionId, sourceMessageId: sent.message._id,
+  });
+
+  await expectConvexCode(t.mutation(internal.supervisorState.offerSkill, {
+    ...runtime, skill: "fill_placeholders",
+  }), "SKILL_NOT_OFFERABLE");
+  await t.run(async (ctx) => ctx.db.patch(project._id, { status: "slides_ready" }));
+  await t.mutation(internal.supervisorState.offerSkill, { ...runtime, skill: "fill_placeholders" });
+  let current = await owner.query(api.projects.get, { projectId: project._id });
+  expect(parseThreadState(current.langgraphThreadState).pendingIntent).toBe("offer_skill:fill_placeholders");
+  await expectConvexCode(t.mutation(internal.styles.setStyle, {
+    ...runtime, styleId: "paper-ink",
+  }), "TOOL_NOT_AVAILABLE");
+  expect((await owner.query(api.projects.get, { projectId: project._id })).infographicStyle).toBeUndefined();
+  await owner.mutation(api.supervisorState.acceptSkillOffer, { projectId: project._id });
+  current = await owner.query(api.projects.get, { projectId: project._id });
+  const active = parseThreadState(current.langgraphThreadState);
+  expect(active).toMatchObject({ activeSkill: "fill_placeholders", skillVersion: 1, pendingIntent: null });
+  expect(listAvailableTools(active, false, "slides_ready")).toEqual(["clear_skill", "list_styles", "set_style"]);
+  expect(listStyles()).toHaveLength(6);
+  expect(listStyles().map((style) => style.styleId)).toEqual([
+    "paper-ink", "dark-precision", "bold-primitives", "soft-product", "blueprint-grid", "poster-hook",
+  ]);
+  expect(listStyles().find((style) => style.styleId === "bold-primitives")?.label).toBe("Bold Primitive Cluster");
+  expect(SKILL_CATALOG.find((skill) => skill.name === "fill_placeholders")?.allowlistedTools).toEqual([
+    "list_styles", "set_style", "generate_deck", "retry_failed_slots", "get_job",
+  ]);
+
+  await t.run(async (ctx) => ctx.db.patch(project._id, { status: "plan_ready" }));
+  await expectConvexCode(t.mutation(internal.styles.setStyle, {
+    ...runtime, styleId: "paper-ink",
+  }), "TOOL_NOT_AVAILABLE");
+  expect((await owner.query(api.projects.get, { projectId: project._id })).infographicStyle).toBeUndefined();
+  await t.run(async (ctx) => ctx.db.patch(project._id, { status: "slides_ready" }));
+
+  const foreign = await t.run(async (ctx) => {
+    const foreignUserId = String(await ctx.db.insert("users", { email: "foreign-style@example.com" }));
+    const foreignProjectId = await ctx.db.insert("projects", {
+      userId: foreignUserId, kind: "product", status: "slides_ready", createdAt: Date.now(),
+    });
+    const foreignJobId = await ctx.db.insert("jobs", {
+      userId: foreignUserId, projectId: foreignProjectId, kind: "supervisor", status: "running",
+      revisionId: "foreign_style", createdAt: Date.now(),
+    });
+    return { foreignProjectId, foreignJobId };
+  });
+  await expectConvexCode(t.mutation(internal.styles.setStyle, {
+    userId, projectId: foreign.foreignProjectId, jobId: foreign.foreignJobId, styleId: "paper-ink",
+  }), "NOT_FOUND");
+  expect((await t.run(async (ctx) => ctx.db.get(foreign.foreignProjectId)))?.infographicStyle).toBeUndefined();
+  expect((await owner.query(api.projects.get, { projectId: project._id })).infographicStyle).toBeUndefined();
+
+  await expectConvexCode(t.mutation(internal.styles.setStyle, { ...runtime, styleId: "unknown" }), "STYLE_UNKNOWN");
+  expect((await owner.query(api.projects.get, { projectId: project._id })).infographicStyle).toBeUndefined();
+  const first = await t.mutation(internal.styles.setStyle, { ...runtime, styleId: "bold-primitives" });
+  const repeated = await t.mutation(internal.styles.setStyle, { ...runtime, styleId: "bold-primitives" });
+  expect(repeated).toEqual(first);
+  expect(first.style).toEqual({ ...STYLE_CATALOG[2], catalogVersion: 1 });
+  const changed = await t.mutation(internal.styles.setStyle, { ...runtime, styleId: "paper-ink" });
+  expect(changed.styleRevisionId).not.toBe(first.styleRevisionId);
+  await owner.mutation(api.supervisorState.clearSkillForUser, { projectId: project._id });
+  current = await owner.query(api.projects.get, { projectId: project._id });
+  expect(parseThreadState(current.langgraphThreadState)).toEqual({ schemaVersion: 1, activeSkill: null, skillVersion: null, pendingIntent: null });
+  expect(current.infographicStyle?.styleId).toBe("paper-ink");
+  expect(current.styleRevisionId).toBe(changed.styleRevisionId);
+  expect((await t.run(async (ctx) => ctx.db.query("jobs").collect())).filter((job) => job.kind !== "supervisor")).toHaveLength(0);
   vi.clearAllTimers();
   vi.useRealTimers();
 });

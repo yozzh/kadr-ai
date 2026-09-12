@@ -1,13 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation } from "./_generated/server";
 import { ownedOrNotFound, requireUser } from "./authz";
-import { OFFERABLE_SKILL } from "./toolIds";
+import { SKILL_IDS, type SkillId } from "./toolIds";
 
 export type ThreadStateV1 = {
   schemaVersion: 1;
-  activeSkill: typeof OFFERABLE_SKILL | null;
+  activeSkill: SkillId | null;
   skillVersion: 1 | null;
-  pendingIntent: `offer_skill:${typeof OFFERABLE_SKILL}` | null;
+  pendingIntent: `offer_skill:${SkillId}` | null;
 };
 
 export const EMPTY_THREAD_STATE: ThreadStateV1 = {
@@ -29,9 +29,9 @@ export function parseThreadState(value: unknown): ThreadStateV1 {
     state.schemaVersion !== 1 ||
     !(
       (state.activeSkill === null && state.skillVersion === null) ||
-      (state.activeSkill === OFFERABLE_SKILL && state.skillVersion === 1)
+      (typeof state.activeSkill === "string" && SKILL_IDS.includes(state.activeSkill as SkillId) && state.skillVersion === 1)
     ) ||
-    !(state.pendingIntent === null || state.pendingIntent === `offer_skill:${OFFERABLE_SKILL}`) ||
+    !(state.pendingIntent === null || (typeof state.pendingIntent === "string" && SKILL_IDS.some((skill) => state.pendingIntent === `offer_skill:${skill}`))) ||
     (state.activeSkill !== null && state.pendingIntent !== null)
   ) {
     throw new ConvexError("INVALID_THREAD_STATE");
@@ -59,12 +59,13 @@ async function ownedTurn(ctx: any, args: any) {
 }
 
 function acceptedState(state: ThreadStateV1): ThreadStateV1 {
-  if (state.pendingIntent !== `offer_skill:${OFFERABLE_SKILL}`) {
+  if (state.pendingIntent === null) {
     throw new ConvexError("TOOL_NOT_AVAILABLE");
   }
+  const skill = state.pendingIntent.slice("offer_skill:".length) as SkillId;
   return {
     schemaVersion: 1,
-    activeSkill: OFFERABLE_SKILL,
+    activeSkill: skill,
     skillVersion: 1,
     pendingIntent: null,
   };
@@ -74,11 +75,14 @@ export const offerSkill = internalMutation({
   args: { ...controlArgs, skill: v.string() },
   handler: async (ctx, args) => {
     const { project, state } = await ownedTurn(ctx, args);
-    if (args.skill !== OFFERABLE_SKILL || project.status !== "empty" || state.activeSkill !== null) {
+    const skill = args.skill as SkillId;
+    const offerable = (skill === "presentation_onboarding" && project.status === "empty") ||
+      (skill === "fill_placeholders" && project.status === "slides_ready");
+    if (!SKILL_IDS.includes(skill) || !offerable || state.activeSkill !== null) {
       throw new ConvexError("SKILL_NOT_OFFERABLE");
     }
     await ctx.db.patch(args.projectId, {
-      langgraphThreadState: { ...state, pendingIntent: `offer_skill:${OFFERABLE_SKILL}` },
+      langgraphThreadState: { ...state, pendingIntent: `offer_skill:${skill}` },
     });
     return "Skill offer recorded.";
   },
