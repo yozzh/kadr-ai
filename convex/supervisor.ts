@@ -121,8 +121,13 @@ export const runSupervisor = internalAction({
       if (!apiKey || !modelName) throw new Error("XAI_ENV_MISSING");
       const model = new ChatXAI({ apiKey, model: modelName });
       const agent = createReactAgent({ llm: model, tools, checkpointSaver: new MemorySaver(), prompt: new SystemMessage(`${MAIN_PROMPT}\n\n${envelope.text}`) });
-      const result = await agent.invoke({ messages: turn.messages.map((message) =>
-        message.role === "user" ? new HumanMessage(message.body) : new AIMessage(message.body)) }, {
+      const result = await agent.invoke({ messages: turn.messages.map((message) => {
+        if (message.role === "assistant") return new AIMessage(message.body);
+        const prefix = "slideContext" in message && message.slideContext
+          ? `[Trusted slide context: Slide ${message.slideContext.number} — ${message.slideContext.headline}. Slide editing is not available; say so honestly if the user requests a change.]\n`
+          : "";
+        return new HumanMessage(`${prefix}${message.body}`);
+      }) }, {
         configurable: { thread_id: turn.project.langgraphThreadId ?? String(args.projectId) },
       });
       const reply = [...result.messages].reverse().find((message) => message instanceof AIMessage);

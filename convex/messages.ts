@@ -25,6 +25,7 @@ export const send = mutation({
     projectId: v.id("projects"),
     body: v.string(),
     clientMessageId: v.string(),
+    slideId: v.optional(v.id("slides")),
   },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
@@ -56,12 +57,25 @@ export const send = mutation({
       throw new ConvexError("MESSAGE_TOO_LONG");
     }
 
+    if (args.slideId !== undefined) {
+      const slide = await ctx.db.get(args.slideId);
+      if (
+        slide === null ||
+        slide.userId !== userId ||
+        slide.projectId !== project._id ||
+        slide.revisionId !== project.currentSlidesRevisionId
+      ) {
+        throw new ConvexError("SLIDE_CONTEXT_INVALID");
+      }
+    }
+
     const createdAt = Date.now();
     const messageId = await ctx.db.insert("messages", {
       userId,
       projectId: args.projectId,
       role: "user",
       body,
+      slideId: args.slideId,
       clientMessageId: args.clientMessageId,
       createdAt,
     });

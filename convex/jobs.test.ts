@@ -892,6 +892,43 @@ test("slides are gated, validated, atomically published, retryable, and stale-sa
   expect((await owner.query(api.messages.list, { projectId: project._id }))
     .filter((message) => message.role === "assistant" && message.body === "Your presentation is ready."))
     .toHaveLength(1);
+  const contextual = await owner.mutation(api.messages.send, {
+    projectId: project._id,
+    body: "Make this sharper",
+    clientMessageId: "slide-context",
+    slideId: done.slides[1]._id,
+  });
+  expect(contextual.message.slideId).toBe(done.slides[1]._id);
+  const contextualTurn = await t.mutation(internal.jobs.loadSupervisorTurn, {
+    userId,
+    projectId: project._id,
+    jobId: contextual.job!._id,
+    revisionId: contextual.job!.revisionId,
+    sourceMessageId: contextual.message._id,
+  });
+  expect(contextualTurn.messages.at(-1)).toMatchObject({
+    slideContext: { number: 2, headline: "Headline 2" },
+  });
+  const staleSlideId = await t.run(async (ctx) => {
+    const slide = done.slides[0];
+    return await ctx.db.insert("slides", {
+      userId: slide.userId,
+      projectId: slide.projectId,
+      jobId: slide.jobId,
+      planItemId: slide.planItemId,
+      revisionId: "stale-revision",
+      sort: slide.sort,
+      headline: slide.headline,
+      body: slide.body,
+      placeholder: slide.placeholder,
+    });
+  });
+  await expectConvexCode(owner.mutation(api.messages.send, {
+    projectId: project._id,
+    body: "Wrong revision",
+    clientMessageId: "stale-slide-context",
+    slideId: staleSlideId,
+  }), "SLIDE_CONTEXT_INVALID");
   expect(await t.mutation(internal.slides.apply, { ...retryArgs, slides: valid })).toEqual({ applied: false });
   expect((await owner.query(api.messages.list, { projectId: project._id }))
     .filter((message) => message.body === "Your presentation is ready.")).toHaveLength(1);

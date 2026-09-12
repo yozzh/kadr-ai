@@ -43,6 +43,7 @@ export default defineSchema({
     projectId: v.id("projects"),
     role: v.union(v.literal("user"), v.literal("assistant")),
     body: v.string(),
+    slideId: v.optional(v.id("slides")),
     clientMessageId: v.optional(v.string()),
     createdAt: v.number(),
   })

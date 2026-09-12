@@ -95,10 +95,17 @@ export const loadSupervisorTurn = internalMutation({
       : [];
     const sourceIndex = messages.findIndex((message) => message._id === args.sourceMessageId);
     if (sourceIndex < 0) throw new ConvexError("SUPERVISOR_JOB_INVALID");
+    const safeMessages = await Promise.all(messages.slice(0, sourceIndex + 1).map(async (message) => {
+      if (message.role !== "user" || message.slideId === undefined) return message;
+      const slide = await ctx.db.get(message.slideId);
+      if (!slide || slide.userId !== args.userId || slide.projectId !== project._id ||
+        slide.revisionId !== project.currentSlidesRevisionId) return { ...message, slideId: undefined };
+      return { ...message, slideContext: { number: slide.sort + 1, headline: slide.headline } };
+    }));
     await ctx.db.patch(args.jobId, { status: "running" });
     return {
       project,
-      messages: messages.slice(0, sourceIndex + 1),
+      messages: safeMessages,
       briefAnswers,
       briefComplete: isBriefComplete(briefAnswers),
       planItems: planItems.sort((a, b) => a.sort - b.sort)

@@ -99,12 +99,13 @@ function chatErrorMessage(error: unknown) {
   return "Couldn't send your message. Check your connection and try again.";
 }
 
-export async function sendChatDraft<ProjectId>({
+export async function sendChatDraft<ProjectId, SlideId = string>({
   projectId,
   draft,
   clientMessageId,
   makeId,
   send,
+  slideId,
 }: {
   projectId: ProjectId;
   draft: string;
@@ -114,11 +115,13 @@ export async function sendChatDraft<ProjectId>({
     projectId: ProjectId;
     body: string;
     clientMessageId: string;
+    slideId?: SlideId;
   }) => Promise<unknown>;
+  slideId?: SlideId;
 }) {
   const retryId = clientMessageId ?? makeId();
   try {
-    await send({ projectId, body: draft, clientMessageId: retryId });
+    await send({ projectId, body: draft, clientMessageId: retryId, slideId });
     return { draft: "", clientMessageId: null, error: null, confirmed: true };
   } catch (error) {
     return {

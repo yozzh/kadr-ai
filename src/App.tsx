@@ -2,6 +2,7 @@ import {
   Component,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -383,6 +384,8 @@ function ProductShellBody({
   onTab: (tab: AppTab) => void;
 }) {
   const [ensureError, setEnsureError] = useState<string | null>(null);
+  const [slideContext, setSlideContext] = useState<{ id: Id<"slides">; number: number } | null>(null);
+  const [viewerSlideId, setViewerSlideId] = useState<Id<"slides"> | null>(null);
   const current = useQuery(api.projects.current);
   const ensure = useMutation(api.projects.ensure);
 
@@ -413,12 +416,28 @@ function ProductShellBody({
 
   return (
     <div className="app">
-      {tab === "chat" ? <ChatPane current={current} /> : null}
+      {tab === "chat" ? (
+        <ChatPane
+          current={current}
+          slideContext={slideContext}
+          onClearSlideContext={() => setSlideContext(null)}
+          onReturnToSlide={() => {
+            if (slideContext) setViewerSlideId(slideContext.id);
+            onTab("project");
+          }}
+        />
+      ) : null}
       {tab === "project" ? (
         <ProjectPane
           current={current}
           ensureError={ensureError}
           onGoToChat={() => onTab("chat")}
+          viewerSlideId={viewerSlideId}
+          onViewerSlideId={setViewerSlideId}
+          onComment={(id, number) => {
+            setSlideContext({ id, number });
+            onTab("chat");
+          }}
           onRetry={retryProject}
         />
       ) : null}
@@ -430,8 +449,14 @@ function ProductShellBody({
 
 function ChatPane({
   current,
+  slideContext,
+  onClearSlideContext,
+  onReturnToSlide,
 }: {
   current: Doc<"projects"> | null | undefined;
+  slideContext: { id: Id<"slides">; number: number } | null;
+  onClearSlideContext: () => void;
+  onReturnToSlide: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const [clientMessageId, setClientMessageId] = useState<string | null>(null);
@@ -546,10 +571,12 @@ function ChatPane({
       clientMessageId,
       makeId: () => crypto.randomUUID(),
       send,
+      slideId: slideContext?.id,
     });
     setDraft(result.draft);
     setClientMessageId(result.clientMessageId);
     setSendError(result.error);
+    if (result.confirmed) onClearSlideContext();
     setSending(false);
   }
 
@@ -681,6 +708,14 @@ function ChatPane({
           <button type="button" disabled={slidesActionPending} onClick={() => void runSlidesAction(() => retrySlides({ jobId: slides.job!._id }))}>Retry</button>
         </section>
       ) : null}
+      {slideContext ? (
+        <div className="slide-chip">
+          <button type="button" className="slide-chip__label" onClick={onReturnToSlide}>
+            Slide {slideContext.number}
+          </button>
+          <button type="button" className="slide-chip__clear" aria-label="Clear slide context" onClick={onClearSlideContext}>×</button>
+        </div>
+      ) : null}
       <form className="composer" onSubmit={(event) => void handleSubmit(event)}>
         <label className="sr-only" htmlFor="chat-message">
           Message Kadr
@@ -730,12 +765,39 @@ function ProjectPane({
   ensureError,
   onGoToChat,
   onRetry,
+  viewerSlideId,
+  onViewerSlideId,
+  onComment,
 }: {
   current: Doc<"projects"> | null | undefined;
   ensureError: string | null;
   onGoToChat: () => void;
   onRetry: () => void;
+  viewerSlideId: Id<"slides"> | null;
+  onViewerSlideId: (id: Id<"slides"> | null) => void;
+  onComment: (id: Id<"slides">, number: number) => void;
 }) {
+  const deck = useQuery(api.slides.current, current ? { projectId: current._id } : "skip");
+  const retrySlides = useMutation(api.slides.retry);
+  const slides = useMemo(() => deck?.slides ?? [], [deck?.slides]);
+  const selectedIndex = Math.max(0, slides.findIndex((slide) => slide._id === viewerSlideId));
+  const selected = slides[selectedIndex];
+  const touchStartY = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (slides.length === 0) {
+      if (viewerSlideId !== null) onViewerSlideId(null);
+      return;
+    }
+    if (!slides.some((slide) => slide._id === viewerSlideId)) onViewerSlideId(slides[0]._id);
+  }, [slides, viewerSlideId, onViewerSlideId]);
+
+  function go(index: number) {
+    const next = slides[Math.max(0, Math.min(index, slides.length - 1))];
+    if (next) onViewerSlideId(next._id);
+  }
+
+  const ready = current?.status === "slides_ready";
   return (
     <>
       <header className="project-header">
@@ -754,10 +816,59 @@ function ProjectPane({
             Retry
           </button>
         </main>
-      ) : current == null ? (
+      ) : current == null || deck === undefined ? (
         <main className="project-status">
           <div className="skeleton-deck" aria-hidden="true" />
           <p>Loading</p>
+        </main>
+      ) : ready && selected ? (
+        <main className="project-viewer">
+          <div className="project-viewer__tabs" aria-label="Project output">
+            <button type="button" className="project-viewer__tab project-viewer__tab--active">Presentation</button>
+            <button type="button" className="project-viewer__tab" disabled>Video</button>
+            <button type="button" className="project-viewer__download" aria-label="Download presentation" disabled>Download</button>
+          </div>
+          <section
+            className="slide-stage"
+            tabIndex={0}
+            aria-label={`Slide ${selectedIndex + 1} of ${slides.length}`}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowUp") { event.preventDefault(); go(selectedIndex - 1); }
+              if (event.key === "ArrowDown") { event.preventDefault(); go(selectedIndex + 1); }
+            }}
+            onTouchStart={(event) => { touchStartY.current = event.touches[0]?.clientY ?? null; }}
+            onTouchEnd={(event) => {
+              const end = event.changedTouches[0]?.clientY;
+              if (touchStartY.current !== null && end !== undefined && Math.abs(end - touchStartY.current) > 40) {
+                go(selectedIndex + (end < touchStartY.current ? 1 : -1));
+              }
+              touchStartY.current = null;
+            }}
+          >
+            <article className="slide-card">
+              <div className="slide-card__visual" aria-label="Image placeholder">
+                <IconProject />
+                <p>{selected.placeholder.description}</p>
+              </div>
+              <div className="slide-card__copy">
+                <h2>{selected.headline}</h2>
+                <p>{selected.body}</p>
+              </div>
+            </article>
+            <button type="button" className="slide-fab" aria-label={`Comment on Slide ${selectedIndex + 1}`} onClick={() => onComment(selected._id, selectedIndex + 1)}>+</button>
+          </section>
+          <div className="slide-controls">
+            <button type="button" aria-label="Previous slide" disabled={selectedIndex === 0} onClick={() => go(selectedIndex - 1)}>Previous</button>
+            <span aria-live="polite">{selectedIndex + 1} / {slides.length}</span>
+            <button type="button" aria-label="Next slide" disabled={selectedIndex === slides.length - 1} onClick={() => go(selectedIndex + 1)}>Next</button>
+          </div>
+        </main>
+      ) : ready ? (
+        <main className="project-status"><p>No slides in the current presentation.</p></main>
+      ) : deck?.job?.status === "failed" ? (
+        <main className="project-status">
+          <p className="error">Couldn't build the presentation slides.</p>
+          <button type="button" className="retry-btn" onClick={() => void retrySlides({ jobId: deck.job!._id })}>Retry</button>
         </main>
       ) : (
         <main className="project-empty">

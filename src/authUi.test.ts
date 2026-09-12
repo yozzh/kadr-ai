@@ -194,13 +194,14 @@ test("log out returns to guest chrome and hides probe identity", () => {
   );
 });
 
-test("rejected chat send keeps the draft and retry id without confirming", async () => {
-  let sendArgs: { body: string; clientMessageId: string } | undefined;
+test("rejected chat send keeps the draft, slide context, and retry id without confirming", async () => {
+  let sendArgs: { body: string; clientMessageId: string; slideId?: string } | undefined;
   const result = await sendChatDraft({
     projectId: "project-id" as never,
     draft: "Still here",
     clientMessageId: null,
     makeId: () => "retry-id",
+    slideId: "slide-id",
     send: async (args) => {
       sendArgs = args;
       throw new Error("network unavailable");
@@ -210,6 +211,7 @@ test("rejected chat send keeps the draft and retry id without confirming", async
   expect(sendArgs).toMatchObject({
     body: "Still here",
     clientMessageId: "retry-id",
+    slideId: "slide-id",
   });
   expect(result).toEqual({
     draft: "Still here",
@@ -239,7 +241,7 @@ test("chat exposes brief-ready plan generation, progress, and explicit safe retr
   expect(appSource).not.toContain("PLAN_GENERATION_FAILED");
 });
 
-test("chat exposes plan-ready slide generation, progress, and safe retry without a viewer", () => {
+test("chat and project expose the reactive vertical viewer and slide context", () => {
   expect(appSource).toContain("api.slides.generate");
   expect(appSource).toContain("api.slides.current");
   expect(appSource).toContain("api.slides.retry");
@@ -251,6 +253,15 @@ test("chat exposes plan-ready slide generation, progress, and safe retry without
   expect(appSource).toContain('message.role === "assistant" && message.body === slidesReadyMessage');
   expect(appSource).toContain("{slidesReadyMessage}");
   expect(appSource).not.toContain("SLIDES_GENERATION_FAILED");
+  expect(appSource).toContain("Presentation");
+  expect(appSource).toContain("Previous slide");
+  expect(appSource).toContain("Next slide");
+  expect(appSource).toContain('event.key === "ArrowUp"');
+  expect(appSource).toContain('event.key === "ArrowDown"');
+  expect(appSource).toContain("onTouchStart");
+  expect(appSource).toContain("Clear slide context");
+  expect(indexCss).toMatch(/\.slide-card\s*\{[\s\S]*aspect-ratio:\s*9 \/ 16;/);
+  expect(indexCss).toMatch(/\.slide-card__copy\s*\{[\s\S]*overflow-y:\s*auto;/);
 });
 
 test("chat UI keeps composer, history, markdown, and favicon contracts", () => {
