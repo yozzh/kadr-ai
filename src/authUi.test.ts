@@ -247,6 +247,9 @@ test("chat exposes plan-ready slide generation, progress, and safe retry without
   expect(appSource).toContain("Generate slides");
   expect(appSource).toContain("Presentation slides");
   expect(appSource).toContain("Couldn't build the presentation slides.");
+  expect(appSource).toContain('slides?.job?.status === "succeeded"');
+  expect(appSource).toContain('message.role === "assistant" && message.body === slidesReadyMessage');
+  expect(appSource).toContain("{slidesReadyMessage}");
   expect(appSource).not.toContain("SLIDES_GENERATION_FAILED");
 });
 
