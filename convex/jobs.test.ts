@@ -378,6 +378,7 @@ test("ensure creates one product; current is stable; foreign get is NOT_FOUND", 
 
 test("messages persist trimmed, ordered, idempotent, validated, and owner-only", async () => {
   const t = makeTest();
+  vi.useFakeTimers();
   const ownerId = String(await insertUser(t, { email: "owner@example.com" }));
   const strangerId = String(await insertUser(t, { email: "other@example.com" }));
   const owner = asUser(t, ownerId);
@@ -427,8 +428,9 @@ test("messages persist trimmed, ordered, idempotent, validated, and owner-only",
     body: "different retry body",
     clientMessageId: "client-1",
   });
-  expect(retry._id).toBe(first._id);
-  expect(retry.body).toBe("Hello");
+  expect(retry.message._id).toBe(first.message._id);
+  expect(retry.job?._id).toBe(first.job?._id);
+  expect(retry.message.body).toBe("Hello");
 
   await owner.mutation(api.messages.send, {
     projectId: project._id,
@@ -454,4 +456,40 @@ test("messages persist trimmed, ordered, idempotent, validated, and owner-only",
 
   const allRows = await t.run(async (ctx) => ctx.db.query("messages").collect());
   expect(allRows).toHaveLength(3);
+  const supervisorJobs = await t.run(async (ctx) =>
+    (await ctx.db.query("jobs").collect()).filter((job) => job.kind === "supervisor"),
+  );
+  expect(supervisorJobs).toHaveLength(3);
+  expect(supervisorJobs.every((job) => job.status === "queued" && job.sourceMessageId)).toBe(true);
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
+test("failed supervisor Retry links one new attempt to the same user message", async () => {
+  const t = makeTest();
+  vi.useFakeTimers();
+  const userId = String(await insertUser(t));
+  const owner = asUser(t, userId);
+  const project = await owner.mutation(api.projects.ensure, {});
+  const sent = await owner.mutation(api.messages.send, {
+    projectId: project._id,
+    body: "Make me a deck",
+    clientMessageId: "retry-turn",
+  });
+  await t.mutation(internal.jobs.failSupervisor, {
+    userId,
+    projectId: project._id,
+    jobId: sent.job!._id,
+    revisionId: sent.job!.revisionId,
+    sourceMessageId: sent.message._id,
+    error: "SUPERVISOR_FAILED",
+  });
+
+  const retry = await owner.mutation(api.jobs.retrySupervisor, { jobId: sent.job!._id });
+  expect(retry?.retryOfJobId).toBe(sent.job!._id);
+  expect(retry?.sourceMessageId).toBe(sent.message._id);
+  expect(retry?.attempt).toBe(2);
+  expect((await owner.query(api.messages.list, { projectId: project._id }))).toHaveLength(1);
+  vi.clearAllTimers();
+  vi.useRealTimers();
 });

@@ -1,0 +1,74 @@
+"use node";
+
+import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { tool } from "@langchain/core/tools";
+import { MemorySaver } from "@langchain/langgraph";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { ChatXAI } from "@langchain/xai";
+import { v } from "convex/values";
+import { internal } from "./_generated/api";
+import { internalAction } from "./_generated/server";
+import { buildEnvelope, MAIN_PROMPT } from "./supervisorPrompt";
+import { parseThreadState } from "./supervisorState";
+
+const argsValidator = {
+  userId: v.string(), projectId: v.id("projects"), jobId: v.id("jobs"),
+  revisionId: v.string(), sourceMessageId: v.id("messages"),
+};
+
+function textContent(content: unknown): string {
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) return content.map((part) => {
+    if (typeof part === "string") return part;
+    if (part && typeof part === "object" && "text" in part && typeof part.text === "string") return part.text;
+    return "";
+  }).join("").trim();
+  return "";
+}
+
+export const runSupervisor = internalAction({
+  args: argsValidator,
+  handler: async (ctx, args) => {
+    try {
+      const turn = await ctx.runMutation(internal.jobs.loadSupervisorTurn, args);
+      const state = parseThreadState(turn.project.langgraphThreadState);
+      const envelope = buildEnvelope(turn.project, state);
+      const common = { userId: args.userId, projectId: args.projectId, jobId: args.jobId };
+      const available = new Set(envelope.tools);
+      const tools = [
+        tool(async ({ skill }: { skill: string }) => {
+          if (!available.has("offer_skill")) throw new Error("TOOL_NOT_AVAILABLE");
+          return await ctx.runMutation(internal.supervisorState.offerSkill, { ...common, skill });
+        }, { name: "offer_skill", description: "Record an offer to start an offerable skill without activating it.", schema: {
+          type: "object", properties: { skill: { type: "string", enum: ["presentation_onboarding"] } }, required: ["skill"], additionalProperties: false,
+        } }),
+        tool(async () => {
+          if (!available.has("accept_skill_offer")) throw new Error("TOOL_NOT_AVAILABLE");
+          return await ctx.runMutation(internal.supervisorState.acceptSkillOffer, common);
+        }, { name: "accept_skill_offer", description: "Accept the pending skill offer.", schema: { type: "object", properties: {}, additionalProperties: false } }),
+        tool(async () => {
+          if (!available.has("clear_skill")) throw new Error("TOOL_NOT_AVAILABLE");
+          return await ctx.runMutation(internal.supervisorState.clearSkill, common);
+        }, { name: "clear_skill", description: "Clear the pending or active skill.", schema: { type: "object", properties: {}, additionalProperties: false } }),
+      ].filter((candidate) => available.has(candidate.name as never));
+      const apiKey = process.env.XAI_API_KEY;
+      const modelName = process.env.XAI_MODEL;
+      if (!apiKey || !modelName) throw new Error("XAI_ENV_MISSING");
+      const model = new ChatXAI({ apiKey, model: modelName });
+      const agent = createReactAgent({ llm: model, tools, checkpointSaver: new MemorySaver(), prompt: new SystemMessage(`${MAIN_PROMPT}\n\n${envelope.text}`) });
+      const result = await agent.invoke({ messages: turn.messages.map((message) =>
+        message.role === "user" ? new HumanMessage(message.body) : new AIMessage(message.body)) }, {
+        configurable: { thread_id: turn.project.langgraphThreadId ?? String(args.projectId) },
+      });
+      const reply = [...result.messages].reverse().find((message) => message instanceof AIMessage);
+      const body = textContent(reply?.content);
+      if (!body) throw new Error("EMPTY_SUPERVISOR_REPLY");
+      await ctx.runMutation(internal.jobs.completeSupervisor, { ...args, body });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      await ctx.runMutation(internal.jobs.failSupervisor, {
+        ...args, error: detail.includes("INVALID_THREAD_STATE") ? "INVALID_THREAD_STATE" : "SUPERVISOR_FAILED",
+      });
+    }
+  },
+});

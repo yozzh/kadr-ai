@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { ownedOrNotFound, requireUser } from "./authz";
 import { MESSAGE_BODY_MAX } from "./messageLimits";
 
@@ -38,7 +39,11 @@ export const send = mutation({
       .unique();
 
     if (existing !== null) {
-      return existing;
+      const job = await ctx.db.query("jobs")
+        .withIndex("by_projectId_and_sourceMessageId", (q) =>
+          q.eq("projectId", args.projectId).eq("sourceMessageId", existing._id))
+        .unique();
+      return { message: existing, job };
     }
 
     const body = args.body.trim();
@@ -65,6 +70,22 @@ export const send = mutation({
       });
     }
 
-    return (await ctx.db.get(messageId))!;
+    const revisionId = project.currentRevisionId ?? `rev_${createdAt}`;
+    const jobId = await ctx.db.insert("jobs", {
+      userId,
+      projectId: args.projectId,
+      kind: "supervisor",
+      status: "queued",
+      revisionId,
+      sourceMessageId: messageId,
+      attempt: 1,
+      createdAt,
+    });
+    await ctx.db.patch(project._id, { currentJobId: jobId });
+    await ctx.scheduler.runAfter(0, internal.supervisor.runSupervisor, {
+      userId, projectId: args.projectId, jobId, revisionId, sourceMessageId: messageId,
+    });
+
+    return { message: (await ctx.db.get(messageId))!, job: (await ctx.db.get(jobId))! };
   },
 });

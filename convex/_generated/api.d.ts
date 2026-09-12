@@ -22,6 +22,12 @@ import type * as messageLimits from "../messageLimits.js";
 import type * as messages from "../messages.js";
 import type * as projects from "../projects.js";
 import type * as questions from "../questions.js";
+import type * as skills from "../skills.js";
+import type * as supervisor from "../supervisor.js";
+import type * as supervisorPrompt from "../supervisorPrompt.js";
+import type * as supervisorState from "../supervisorState.js";
+import type * as toolContracts from "../toolContracts.js";
+import type * as toolIds from "../toolIds.js";
 import type * as users from "../users.js";
 
 /**
@@ -42,6 +48,12 @@ declare const fullApi: ApiFromModules<{
   messages: typeof messages;
   projects: typeof projects;
   questions: typeof questions;
+  skills: typeof skills;
+  supervisor: typeof supervisor;
+  supervisorPrompt: typeof supervisorPrompt;
+  supervisorState: typeof supervisorState;
+  toolContracts: typeof toolContracts;
+  toolIds: typeof toolIds;
   users: typeof users;
 }>;
 export declare const api: FilterApi<

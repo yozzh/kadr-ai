@@ -439,6 +439,12 @@ function ChatPane({
     current ? { projectId: current._id } : "skip",
   );
   const send = useMutation(api.messages.send);
+  const latestJob = useQuery(
+    api.jobs.latestSupervisor,
+    current ? { projectId: current._id } : "skip",
+  );
+  const retrySupervisor = useMutation(api.jobs.retrySupervisor);
+  const [retrying, setRetrying] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -496,6 +502,24 @@ function ChatPane({
                 {message.body}
               </div>
             ))}
+            {latestJob?.status === "queued" || latestJob?.status === "running" ? (
+              <p className="supervisor-status">Kadr is thinking…</p>
+            ) : null}
+            {latestJob?.status === "failed" ? (
+              <div className="supervisor-failed" role="alert">
+                <span>Couldn't get a reply.</span>
+                <button
+                  type="button"
+                  disabled={retrying}
+                  onClick={() => {
+                    setRetrying(true);
+                    void retrySupervisor({ jobId: latestJob._id }).finally(() => setRetrying(false));
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
       </main>

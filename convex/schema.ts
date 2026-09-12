@@ -66,6 +66,9 @@ export default defineSchema({
     kind: v.string(),
     status: jobStatus,
     revisionId: v.string(),
+    sourceMessageId: v.optional(v.id("messages")),
+    retryOfJobId: v.optional(v.id("jobs")),
+    attempt: v.optional(v.number()),
     error: v.optional(v.string()),
     ranWith: v.optional(
       v.object({
@@ -78,7 +81,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_projectId", ["projectId"]),
+    .index("by_projectId", ["projectId"])
+    .index("by_projectId_and_sourceMessageId", ["projectId", "sourceMessageId"]),
 
   planItems: defineTable({
     userId: v.string(),
@@ -116,9 +120,10 @@ export default defineSchema({
 
   skills: defineTable({
     name: v.string(),
+    version: v.number(),
     preconditions: v.array(v.string()),
     allowlistedTools: v.array(v.string()),
     bans: v.array(v.string()),
     promptFragment: v.string(),
-  }),
+  }).index("by_name_and_version", ["name", "version"]),
 });
