@@ -470,6 +470,12 @@ function ChatPane({
   const generateSlides = useMutation(api.slides.generate);
   const retrySlides = useMutation(api.slides.retry);
   const [slidesActionPending, setSlidesActionPending] = useState(false);
+  const slidesReadyMessage = "Your presentation is ready.";
+  const showSyntheticSlidesReady = slides?.job?.status === "succeeded" &&
+    messages !== undefined &&
+    !messages.some((message) =>
+      message.role === "assistant" && message.body === slidesReadyMessage
+    );
 
   async function runSlidesAction(action: () => Promise<unknown>) {
     setSlidesActionPending(true);
@@ -559,7 +565,7 @@ function ChatPane({
         <p className="chat__day">Today</p>
         {current == null || messages === undefined ? (
           <p className="chat__status">Loading conversation…</p>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && !showSyntheticSlidesReady ? (
           <div className="message message--assistant">
             Your interview will appear here when Kadr is connected.
           </div>
@@ -585,6 +591,11 @@ function ChatPane({
                 )}
               </div>
             ))}
+            {showSyntheticSlidesReady ? (
+              <div className="message message--assistant">
+                {slidesReadyMessage}
+              </div>
+            ) : null}
             {latestJob?.status === "queued" || latestJob?.status === "running" ? (
               <p className="supervisor-status">Kadr is thinking…</p>
             ) : null}
