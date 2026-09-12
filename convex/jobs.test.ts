@@ -17,6 +17,8 @@ import { listAvailableTools } from "./toolContracts";
 import { buildEnvelope, MAIN_PROMPT } from "./supervisorPrompt";
 import httpSource from "./http.ts?raw";
 import authSource from "./auth.ts?raw";
+import supervisorSource from "./supervisor.ts?raw";
+import { assertPlanToolRuntimeArgs } from "./supervisor";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -715,6 +717,19 @@ test("presentation plan is gated, idempotent, ordered, retryable, and stale-safe
   const ready = await owner.query(api.projects.get, { projectId: project._id });
   const idleState = parseThreadState(ready.langgraphThreadState);
   expect(listAvailableTools(idleState, false, ready.status, ready.confirmedBriefRevisionId)).toContain("generate_presentation_plan");
+  const envelope = buildEnvelope(ready, idleState);
+  expect(envelope.text).toContain(`project_id: ${project._id}`);
+  expect(envelope.text).toContain(`confirmed_brief_revision_id: ${briefRevisionId}`);
+  expect(envelope.text).toContain(JSON.stringify({ projectId: project._id, confirmedBriefRevisionId: briefRevisionId }));
+  expect(supervisorSource).toContain('required: ["projectId", "confirmedBriefRevisionId"]');
+  expect(() => assertPlanToolRuntimeArgs(
+    { projectId: String(project._id), confirmedBriefRevisionId: "wrong_revision" },
+    { projectId: String(project._id), confirmedBriefRevisionId: briefRevisionId },
+  )).toThrow("TOOL_ARGS_INVALID");
+  expect(() => assertPlanToolRuntimeArgs(
+    { projectId: String(project._id), confirmedBriefRevisionId: briefRevisionId },
+    { projectId: String(project._id), confirmedBriefRevisionId: briefRevisionId },
+  )).not.toThrow();
 
   const first = await owner.mutation(api.plan.generate, { projectId: project._id, confirmedBriefRevisionId: briefRevisionId });
   const duplicate = await owner.mutation(api.plan.generate, { projectId: project._id, confirmedBriefRevisionId: briefRevisionId });

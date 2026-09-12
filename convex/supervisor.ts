@@ -26,6 +26,14 @@ function textContent(content: unknown): string {
   return "";
 }
 
+export function assertPlanToolRuntimeArgs(
+  provided: { projectId: string; confirmedBriefRevisionId: string },
+  expected: { projectId: string; confirmedBriefRevisionId?: string },
+) {
+  if (provided.projectId !== expected.projectId ||
+    provided.confirmedBriefRevisionId !== expected.confirmedBriefRevisionId) throw new Error("TOOL_ARGS_INVALID");
+}
+
 export const runSupervisor = internalAction({
   args: argsValidator,
   handler: async (ctx, args) => {
@@ -66,16 +74,23 @@ export const runSupervisor = internalAction({
           if (!available.has("confirm_brief")) throw new Error("TOOL_NOT_AVAILABLE");
           return await ctx.runMutation(internal.brief.confirmBriefInternal, { ...common, sourceMessageId: args.sourceMessageId });
         }, { name: "confirm_brief", description: "Confirm the complete active brief revision without generating a plan.", schema: { type: "object", properties: {}, additionalProperties: false } }),
-        tool(async () => {
+        tool(async ({ projectId, confirmedBriefRevisionId }: { projectId: string; confirmedBriefRevisionId: string }) => {
           if (!available.has("generate_presentation_plan")) throw new Error("TOOL_NOT_AVAILABLE");
-          const briefRevisionId = turn.project.confirmedBriefRevisionId;
-          if (!briefRevisionId) throw new Error("TOOL_NOT_AVAILABLE");
+          assertPlanToolRuntimeArgs(
+            { projectId, confirmedBriefRevisionId },
+            { projectId: String(args.projectId), confirmedBriefRevisionId: turn.project.confirmedBriefRevisionId },
+          );
           return await ctx.runMutation(internal.plan.enqueueInternal, {
             userId: args.userId,
             projectId: args.projectId,
-            briefRevisionId,
+            briefRevisionId: confirmedBriefRevisionId,
           });
-        }, { name: "generate_presentation_plan", description: "Queue generation of a presentation plan from the confirmed brief.", schema: { type: "object", properties: {}, additionalProperties: false } }),
+        }, { name: "generate_presentation_plan", description: "Queue generation of a presentation plan from the confirmed brief using the exact IDs in the runtime envelope.", schema: {
+          type: "object",
+          properties: { projectId: { type: "string" }, confirmedBriefRevisionId: { type: "string" } },
+          required: ["projectId", "confirmedBriefRevisionId"],
+          additionalProperties: false,
+        } }),
       ].filter((candidate) => available.has(candidate.name as never));
       const apiKey = process.env.XAI_API_KEY;
       const modelName = process.env.XAI_MODEL;
