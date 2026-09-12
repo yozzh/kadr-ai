@@ -223,7 +223,7 @@ test("chat exposes compact onboarding consent and progress actions", () => {
   expect(appSource).toContain("Presentation onboarding offer");
   expect(appSource).toContain("Six quick questions · about 3 minutes");
   expect(appSource).toContain("Presentation brief progress");
-  expect(appSource).toContain("Confirm brief");
+  expect(appSource).not.toContain("Confirm brief");
   expect(appSource).toContain("api.supervisorState.acceptSkillOffer");
   expect(appSource).toContain("api.brief.progress");
 });

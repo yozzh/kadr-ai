@@ -13,6 +13,7 @@ import * as users from "./users";
 import * as brief from "./brief";
 import { parseThreadState } from "./supervisorState";
 import { listAvailableTools } from "./toolContracts";
+import { buildEnvelope, MAIN_PROMPT } from "./supervisorPrompt";
 import httpSource from "./http.ts?raw";
 import authSource from "./auth.ts?raw";
 
@@ -617,9 +618,47 @@ test("onboarding saves provenance, forks corrections, and confirms without a pla
     t.mutation(internal.brief.saveBriefAnswer, { ...runtime, questionId: "q_missing", value: "No" }),
     "BRIEF_QUESTION_UNKNOWN",
   );
+  await expectConvexCode(
+    t.mutation(internal.brief.saveBriefAnswer, { ...runtime, questionId: "q_one_liner", value: "   " }),
+    "TOOL_ARGS_INVALID",
+  );
+  await expectConvexCode(
+    t.mutation(internal.brief.saveBriefAnswer, { ...runtime, questionId: "q_one_liner", value: "x".repeat(4001) }),
+    "MESSAGE_TOO_LONG",
+  );
+
+  await t.mutation(internal.brief.saveBriefAnswer, {
+    ...runtime,
+    questionId: "q_one_liner",
+    value: "A pitch assistant",
+  });
+  await owner.mutation(api.supervisorState.clearSkillForUser, { projectId: project._id });
+  const stopped = await owner.query(api.brief.progress, { projectId: project._id });
+  expect(stopped.answers.map((answer) => answer.questionId)).toEqual(["q_one_liner"]);
+  expect(stopped.state.activeSkill).toBeNull();
+  await t.mutation(internal.supervisorState.offerSkill, {
+    userId,
+    projectId: project._id,
+    jobId: sent.job!._id,
+    skill: "presentation_onboarding",
+  });
+  await owner.mutation(api.supervisorState.acceptSkillOffer, { projectId: project._id });
+  const resumed = await owner.query(api.brief.progress, { projectId: project._id });
+  expect(resumed.answers.map((answer) => answer.questionId)).toEqual(["q_one_liner"]);
+  expect(resumed.nextQuestion?.questionId).toBe("q_audience");
+  const resumedEnvelope = buildEnvelope(
+    await owner.query(api.projects.get, { projectId: project._id }),
+    resumed.state,
+    resumed.complete,
+    resumed.answers,
+  );
+  expect(resumedEnvelope.text.indexOf("</envelope>")).toBeLessThan(resumedEnvelope.text.indexOf("You are running presentation_onboarding"));
+  expect(resumedEnvelope.text).toContain("Ask exactly one unanswered catalog question per turn");
+  expect(resumedEnvelope.text).toContain("A side question is not an answer");
+  expect(resumedEnvelope.text).toContain('"questionId":"q_one_liner"');
+  expect(MAIN_PROMPT).toContain("There is no word list and no activate_skill");
 
   for (const [questionId, value] of [
-    ["q_one_liner", "A pitch assistant"],
     ["q_audience", "Startup founders"],
     ["q_problem", "Decks take too long"],
     ["q_difference", "Conversation first"],

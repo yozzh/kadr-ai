@@ -451,7 +451,6 @@ function ChatPane({
   );
   const acceptOnboarding = useMutation(api.supervisorState.acceptSkillOffer);
   const stopOnboarding = useMutation(api.supervisorState.clearSkillForUser);
-  const confirmBrief = useMutation(api.brief.confirmBrief);
   const [briefActionPending, setBriefActionPending] = useState(false);
 
   async function runBriefAction(action: () => Promise<unknown>) {
@@ -564,9 +563,6 @@ function ChatPane({
           <progress value={brief.closedCount} max={brief.totalCount}>{brief.closedCount} of {brief.totalCount}</progress>
           <div className="onboarding-card__actions">
             <button type="button" className="onboarding-secondary" disabled={briefActionPending} onClick={() => void runBriefAction(() => stopOnboarding({ projectId: current._id }))}>Stop</button>
-            {brief.complete ? (
-              <button type="button" className="onboarding-primary" disabled={briefActionPending} onClick={() => void runBriefAction(() => confirmBrief({ projectId: current._id, revisionId: brief.revisionId }))}>Confirm brief</button>
-            ) : null}
           </div>
         </section>
       ) : null}
