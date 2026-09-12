@@ -249,3 +249,17 @@ test("chat exposes plan-ready slide generation, progress, and safe retry without
   expect(appSource).toContain("Couldn't build the presentation slides.");
   expect(appSource).not.toContain("SLIDES_GENERATION_FAILED");
 });
+
+test("chat UI keeps composer, history, markdown, and favicon contracts", () => {
+  expect(appSource).toContain("useLayoutEffect");
+  expect(appSource).toContain("Math.min(composer.scrollHeight, 112)");
+  expect(appSource).toContain('event.key === "Enter"');
+  expect(appSource).toContain("!event.shiftKey");
+  expect(appSource).toContain("!event.nativeEvent.isComposing");
+  expect(appSource).toContain("ReactMarkdown");
+  expect(appSource).toContain('message.role === "assistant"');
+  expect(indexCss).toMatch(/\.app\s*\{[\s\S]*height:\s*100dvh;[\s\S]*overflow:\s*hidden;/);
+  expect(indexCss).toMatch(/\.chat\s*\{[\s\S]*overflow-y:\s*auto;/);
+  expect(indexCss).toMatch(/\.message-list\s*\{[\s\S]*margin-top:\s*auto;/);
+  expect(indexHtml).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml" />');
+});

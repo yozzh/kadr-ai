@@ -23,7 +23,7 @@
 html,
 body,
 #root {
-  min-height: 100%;
+  height: 100%;
 }
 
 body {
@@ -45,9 +45,10 @@ textarea {
 .app {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
+  height: 100dvh;
   max-width: 390px;
   margin: 0 auto;
+  overflow: hidden;
   background: var(--bg);
 }
 
@@ -289,6 +290,11 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-top: auto;
+}
+
+.chat > .message {
+  margin-top: auto;
 }
 
 .message {
@@ -297,6 +303,43 @@ textarea {
   border-radius: 18px;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.message > :first-child {
+  margin-top: 0;
+}
+
+.message > :last-child {
+  margin-bottom: 0;
+}
+
+.message p,
+.message ul,
+.message ol,
+.message pre,
+.message blockquote {
+  margin: 0.55em 0;
+}
+
+.message ul,
+.message ol {
+  padding-left: 1.35em;
+}
+
+.message pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.message code {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.message a {
+  color: inherit;
 }
 
 .message--assistant {
@@ -417,7 +460,7 @@ textarea {
   width: 100%;
   min-height: 44px;
   max-height: 112px;
-  resize: vertical;
+  resize: none;
   padding: 11px 14px;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -425,6 +468,7 @@ textarea {
   background: var(--paper);
   color: var(--ink);
   line-height: 1.35;
+  overflow-y: hidden;
 }
 
 .composer textarea:focus-visible {
