@@ -188,6 +188,13 @@ export const apply = internalMutation({
     for (const slide of clean) await ctx.db.insert("slides", {
       ...slide, userId: args.userId, projectId: project._id, jobId: job._id, revisionId: args.slidesRevisionId,
     });
+    await ctx.db.insert("messages", {
+      userId: args.userId,
+      projectId: project._id,
+      role: "assistant",
+      body: "Your presentation is ready.",
+      createdAt: Date.now(),
+    });
     await ctx.db.patch(job._id, { status: "succeeded", error: undefined, ranWith: {
       userId: args.userId, projectId: project._id, jobId: job._id, revisionId: args.planRevisionId,
     }});
