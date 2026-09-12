@@ -349,6 +349,15 @@ textarea {
   border-bottom-left-radius: 6px;
   background: var(--paper);
   color: var(--ink);
+  white-space: normal;
+}
+
+.message--assistant li > p {
+  margin: 0;
+}
+
+.message--assistant li + li {
+  margin-top: 0.35em;
 }
 
 .message--user {

@@ -278,5 +278,7 @@ test("chat UI keeps composer, history, markdown, and favicon contracts", () => {
   expect(indexCss).toMatch(/\.app\s*\{[\s\S]*height:\s*100dvh;[\s\S]*overflow:\s*hidden;/);
   expect(indexCss).toMatch(/\.chat\s*\{[\s\S]*overflow-y:\s*auto;/);
   expect(indexCss).toMatch(/\.message-list\s*\{[\s\S]*margin-top:\s*auto;/);
+  expect(indexCss).toMatch(/\.message--assistant\s*\{[\s\S]*white-space:\s*normal;/);
+  expect(indexCss).toMatch(/\.message--assistant li > p\s*\{[\s\S]*margin:\s*0;/);
   expect(indexHtml).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml" />');
 });
