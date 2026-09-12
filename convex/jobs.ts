@@ -89,10 +89,21 @@ export const loadSupervisorTurn = internalMutation({
       ? (await ctx.db.query("briefAnswers").withIndex("by_projectId", (q) => q.eq("projectId", args.projectId)).collect())
         .filter((answer) => answer.revisionId === project.currentRevisionId)
       : [];
+    const planItems = project.currentPlanRevisionId
+      ? await ctx.db.query("planItems").withIndex("by_projectId_and_revisionId", (q) =>
+        q.eq("projectId", project._id).eq("revisionId", project.currentPlanRevisionId!)).collect()
+      : [];
     const sourceIndex = messages.findIndex((message) => message._id === args.sourceMessageId);
     if (sourceIndex < 0) throw new ConvexError("SUPERVISOR_JOB_INVALID");
     await ctx.db.patch(args.jobId, { status: "running" });
-    return { project, messages: messages.slice(0, sourceIndex + 1), briefAnswers, briefComplete: isBriefComplete(briefAnswers) };
+    return {
+      project,
+      messages: messages.slice(0, sourceIndex + 1),
+      briefAnswers,
+      briefComplete: isBriefComplete(briefAnswers),
+      planItems: planItems.sort((a, b) => a.sort - b.sort)
+        .map(({ sort, talkingPoint }) => ({ sort, talkingPoint })),
+    };
   },
 });
 

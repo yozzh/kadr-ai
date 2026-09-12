@@ -49,7 +49,7 @@ export const runSupervisor = internalAction({
     try {
       const turn = await ctx.runMutation(internal.jobs.loadSupervisorTurn, args);
       const state = parseThreadState(turn.project.langgraphThreadState);
-      const envelope = buildEnvelope(turn.project, state, turn.briefComplete, turn.briefAnswers);
+      const envelope = buildEnvelope(turn.project, state, turn.briefComplete, turn.briefAnswers, turn.planItems);
       const common = { userId: args.userId, projectId: args.projectId, jobId: args.jobId };
       const available = new Set(envelope.tools);
       const tools = [

@@ -800,8 +800,21 @@ test("slides are gated, validated, atomically published, retryable, and stale-sa
     .not.toContain("generate_slides");
   expect(listAvailableTools({ ...idle, activeSkill: "presentation_onboarding", skillVersion: 1 }, false, ready.status, ready.confirmedBriefRevisionId))
     .not.toContain("generate_slides");
-  const envelope = buildEnvelope(ready, idle);
+  const planQuestion = await owner.mutation(api.messages.send, {
+    projectId: project._id, body: "How many slides?", clientMessageId: "plan-context",
+  });
+  const loadedTurn = await t.mutation(internal.jobs.loadSupervisorTurn, {
+    userId, projectId: project._id, jobId: planQuestion.job!._id,
+    revisionId: planQuestion.job!.revisionId, sourceMessageId: planQuestion.message._id,
+  });
+  const envelope = buildEnvelope(ready, idle, false, [], loadedTurn.planItems);
   expect(envelope.text).toContain(JSON.stringify({ projectId: project._id, planRevisionId }));
+  expect(envelope.text).toContain(`current_plan: ${JSON.stringify({
+    revision: planRevisionId,
+    count: 2,
+    items: [{ talkingPoint: "Problem" }, { talkingPoint: "Solution" }],
+  })}`);
+  expect(MAIN_PROMPT).toContain("A plan is not a generated deck");
   expect(() => assertSlidesToolRuntimeArgs(
     { projectId: String(project._id), planRevisionId: "wrong" },
     { projectId: String(project._id), planRevisionId },

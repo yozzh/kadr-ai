@@ -33,6 +33,8 @@ For presentations: audience and goal first, one main idea, a clear story arc, in
 
 Before an action that generates or changes a plan, slides, style, graphics, snapshot, export, or voice, require a clear user yes. If a UI confirmation already performed the same mutation, do not start another job.
 
+The current_plan snapshot is the source of truth for the prepared plan's slide count and structure. A plan is not a generated deck: while project_status is plan_ready, do not claim that it is visible in Project or send the user there to view it. When project_status is slides_ready, Project contains the generated deck.
+
 Never auto-retry. If a job is running, say so and use an available status tool. If it failed, offer Retry as a new job for the same intent.
 
 ## Communication
@@ -50,6 +52,7 @@ export function buildEnvelope(
   state: ThreadStateV1,
   briefComplete = false,
   briefAnswers: Array<{ questionId: string; value: string; unknown: boolean }> = [],
+  planItems: Array<{ sort: number; talkingPoint: string }> = [],
 ) {
   const tools = listAvailableTools(
     state,
@@ -62,6 +65,6 @@ export function buildEnvelope(
     : "";
   return {
     tools,
-    text: `<envelope>\nproject_id: ${project._id}\nproject_status: ${project.status}\nactive_skill: ${state.activeSkill ?? "empty"}\nskill_version: ${state.skillVersion ?? "empty"}\npending_intent: ${state.pendingIntent ?? "empty"}\navailable_tools: ${tools.join(",")}\nbrief_confirmed: ${project.confirmedBriefRevisionId ? "yes" : "no"}\nconfirmed_brief_revision_id: ${project.confirmedBriefRevisionId ?? "empty"}\nplan_revision_id: ${project.currentPlanRevisionId ?? "empty"}\ngenerate_presentation_plan_args: ${project.confirmedBriefRevisionId ? JSON.stringify({ projectId: project._id, confirmedBriefRevisionId: project.confirmedBriefRevisionId }) : "empty"}\ngenerate_slides_args: ${project.status === "plan_ready" && project.currentPlanRevisionId ? JSON.stringify({ projectId: project._id, planRevisionId: project.currentPlanRevisionId }) : "empty"}\n</envelope>${fragment ? `\n\n${fragment}` : ""}`,
+    text: `<envelope>\nproject_id: ${project._id}\nproject_status: ${project.status}\nactive_skill: ${state.activeSkill ?? "empty"}\nskill_version: ${state.skillVersion ?? "empty"}\npending_intent: ${state.pendingIntent ?? "empty"}\navailable_tools: ${tools.join(",")}\nbrief_confirmed: ${project.confirmedBriefRevisionId ? "yes" : "no"}\nconfirmed_brief_revision_id: ${project.confirmedBriefRevisionId ?? "empty"}\nplan_revision_id: ${project.currentPlanRevisionId ?? "empty"}\ncurrent_plan: ${project.currentPlanRevisionId && planItems.length > 0 ? JSON.stringify({ revision: project.currentPlanRevisionId, count: planItems.length, items: planItems.map(({ talkingPoint }) => ({ talkingPoint })) }) : "empty"}\ngenerate_presentation_plan_args: ${project.confirmedBriefRevisionId ? JSON.stringify({ projectId: project._id, confirmedBriefRevisionId: project.confirmedBriefRevisionId }) : "empty"}\ngenerate_slides_args: ${project.status === "plan_ready" && project.currentPlanRevisionId ? JSON.stringify({ projectId: project._id, planRevisionId: project.currentPlanRevisionId }) : "empty"}\n</envelope>${fragment ? `\n\n${fragment}` : ""}`,
   };
 }
