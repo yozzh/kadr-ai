@@ -260,6 +260,9 @@ test("chat and project expose the reactive vertical viewer and slide context", (
   expect(appSource).toContain('event.key === "ArrowDown"');
   expect(appSource).toContain("onTouchStart");
   expect(appSource).toContain("Clear slide context");
+  expect(appSource).toContain('className="message__slide"');
+  expect(appSource).toContain("slideNumberById.get(message.slideId)");
+  expect(appSource).toContain("onOpenSlide(message.slideId!)");
   expect(appSource).toContain("Building slides…");
   expect(appSource).toContain("<IconChat />");
   expect(indexCss).toMatch(/\.slide-card\s*\{[\s\S]*aspect-ratio:\s*9 \/ 16;/);

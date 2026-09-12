@@ -367,6 +367,19 @@ textarea {
   color: var(--paper);
 }
 
+.message__slide {
+  display: block;
+  margin: 0 0 7px;
+  padding: 4px 8px;
+  border: 1px solid rgb(255 255 255 / 35%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 12%);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .supervisor-status {
   align-self: flex-start;
   margin: 2px 4px;

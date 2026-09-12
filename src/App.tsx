@@ -425,6 +425,10 @@ function ProductShellBody({
             if (slideContext) setViewerSlideId(slideContext.id);
             onTab("project");
           }}
+          onOpenSlide={(id) => {
+            setViewerSlideId(id);
+            onTab("project");
+          }}
         />
       ) : null}
       {tab === "project" ? (
@@ -452,11 +456,13 @@ function ChatPane({
   slideContext,
   onClearSlideContext,
   onReturnToSlide,
+  onOpenSlide,
 }: {
   current: Doc<"projects"> | null | undefined;
   slideContext: { id: Id<"slides">; number: number } | null;
   onClearSlideContext: () => void;
   onReturnToSlide: () => void;
+  onOpenSlide: (id: Id<"slides">) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [clientMessageId, setClientMessageId] = useState<string | null>(null);
@@ -502,6 +508,10 @@ function ChatPane({
     !messages.some((message) =>
       message.role === "assistant" && message.body === slidesReadyMessage
     );
+  const slideNumberById = useMemo(
+    () => new Map(slides?.slides.map((slide) => [slide._id, slide.sort + 1]) ?? []),
+    [slides?.slides],
+  );
 
   useLayoutEffect(() => {
     const chat = chatRef.current;
@@ -620,7 +630,18 @@ function ChatPane({
                     {message.body}
                   </ReactMarkdown>
                 ) : (
-                  message.body
+                  <>
+                    {message.slideId && slideNumberById.has(message.slideId) ? (
+                      <button
+                        type="button"
+                        className="message__slide"
+                        onClick={() => onOpenSlide(message.slideId!)}
+                      >
+                        Slide {slideNumberById.get(message.slideId)}
+                      </button>
+                    ) : null}
+                    {message.body}
+                  </>
                 )}
               </div>
             ))}
