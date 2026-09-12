@@ -548,6 +548,23 @@ test("supervisor smoke covers completion, control state, invalid state, and safe
   expect(parseThreadState((await owner.query(api.projects.get, { projectId: project._id })).langgraphThreadState).activeSkill).toBeNull();
   expect(() => parseThreadState({ schemaVersion: 2 })).toThrow(/INVALID_THREAD_STATE/);
 
+  const invalid = await owner.mutation(api.messages.send, {
+    projectId: project._id, body: "Broken state", clientMessageId: "invalid-state",
+  });
+  await t.run(async (ctx) => {
+    await ctx.db.patch(project._id, { langgraphThreadState: { schemaVersion: 2 } });
+  });
+  await t.action(internal.supervisor.runSupervisor, {
+    userId, projectId: project._id, jobId: invalid.job!._id,
+    revisionId: invalid.job!.revisionId, sourceMessageId: invalid.message._id,
+  });
+  const invalidJob = await owner.query(api.jobs.get, { jobId: invalid.job!._id });
+  expect(invalidJob?.status).toBe("failed");
+  expect(invalidJob?.error).toBe("INVALID_THREAD_STATE");
+  await t.run(async (ctx) => {
+    await ctx.db.patch(project._id, { langgraphThreadState: undefined });
+  });
+
   const failing = await owner.mutation(api.messages.send, {
     projectId: project._id, body: "Provider failure", clientMessageId: "failure",
   });
