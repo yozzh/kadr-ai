@@ -20,7 +20,8 @@
     "@langchain/xai": "^1.4.13",
     "convex": "^1.45.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",

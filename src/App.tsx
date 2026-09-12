@@ -1,11 +1,14 @@
 import {
   Component,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
   type SVGProps,
 } from "react";
+import ReactMarkdown from "react-markdown";
 import type { Doc } from "../convex/_generated/dataModel";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
@@ -434,6 +437,7 @@ function ChatPane({
   const [clientMessageId, setClientMessageId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const messages = useQuery(
     api.messages.list,
     current ? { projectId: current._id } : "skip",
@@ -459,6 +463,16 @@ function ChatPane({
   const generatePlan = useMutation(api.plan.generate);
   const retryPlan = useMutation(api.plan.retry);
   const [planActionPending, setPlanActionPending] = useState(false);
+
+  useLayoutEffect(() => {
+    const composer = composerRef.current;
+    if (!composer) {
+      return;
+    }
+    composer.style.height = "auto";
+    composer.style.height = `${Math.min(composer.scrollHeight, 112)}px`;
+    composer.style.overflowY = composer.scrollHeight > 112 ? "auto" : "hidden";
+  }, [draft]);
 
   async function runPlanAction(action: () => Promise<unknown>) {
     setPlanActionPending(true);
@@ -537,7 +551,19 @@ function ChatPane({
                 className={`message message--${message.role}`}
                 key={message._id}
               >
-                {message.body}
+                {message.role === "assistant" ? (
+                  <ReactMarkdown
+                    components={{
+                      a: ({ node: _node, ...props }) => (
+                        <a {...props} target="_blank" rel="noreferrer noopener" />
+                      ),
+                    }}
+                  >
+                    {message.body}
+                  </ReactMarkdown>
+                ) : (
+                  message.body
+                )}
               </div>
             ))}
             {latestJob?.status === "queued" || latestJob?.status === "running" ? (
@@ -610,6 +636,7 @@ function ChatPane({
           Message Kadr
         </label>
         <textarea
+          ref={composerRef}
           id="chat-message"
           value={draft}
           rows={1}
@@ -618,6 +645,16 @@ function ChatPane({
           onChange={(event) => {
             setDraft(event.target.value);
             setSendError(null);
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
           }}
         />
         <button
