@@ -119,7 +119,7 @@ export const runSupervisor = internalAction({
           headline: string; body: string; placeholderDescription: string;
         }) => {
           if (!available.has("update_slide")) throw new Error("TOOL_NOT_AVAILABLE");
-          const sourceMessage = turn.messages.at(-1);
+          const sourceMessage = turn.messages[turn.messages.length - 1];
           const slideContext = sourceMessage && "slideContext" in sourceMessage ? sourceMessage.slideContext : undefined;
           if (!slideContext) throw new Error("SLIDE_CONTEXT_INVALID");
           return await ctx.runMutation(internal.slides.updateInternal, {
