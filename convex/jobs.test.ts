@@ -107,6 +107,8 @@ test("guest is unauthenticated; users.me is null", async () => {
   await expectConvexCode(t.query(api.questions.list, {}), "UNAUTHENTICATED");
   await expectConvexCode(t.mutation(api.questions.seed, {}), "UNAUTHENTICATED");
   await expectConvexCode(t.mutation(api.jobs.startProbe, {}), "UNAUTHENTICATED");
+  await expectConvexCode(t.query(api.projects.current, {}), "UNAUTHENTICATED");
+  await expectConvexCode(t.mutation(api.projects.ensure, {}), "UNAUTHENTICATED");
 
   const ids = await t.run(async (ctx) => {
     const projectId = await ctx.db.insert("projects", {
@@ -323,4 +325,51 @@ test("failed probe stays failed without auto-retry", async () => {
   const afterRetry = await t.run(async (ctx) => ctx.db.query("jobs").collect());
   expect(afterRetry).toHaveLength(2);
   vi.useRealTimers();
+});
+
+test("ensure creates one product; current is stable; foreign get is NOT_FOUND", async () => {
+  const t = makeTest();
+  await expectConvexCode(t.query(api.projects.current, {}), "UNAUTHENTICATED");
+  await expectConvexCode(t.mutation(api.projects.ensure, {}), "UNAUTHENTICATED");
+
+  const ownerId = String(await insertUser(t, { email: "a@example.com" }));
+  const strangerId = String(await insertUser(t, { email: "b@example.com" }));
+  const owner = asUser(t, ownerId);
+  const stranger = asUser(t, strangerId);
+
+  expect(await owner.query(api.projects.current, {})).toBeNull();
+
+  const first = await owner.mutation(api.projects.ensure, {});
+  expect(first.kind).toBe("product");
+  expect(first.status).toBe("empty");
+  expect(first.userId).toBe(ownerId);
+  expect(first.currentRevisionId).toMatch(/^rev_\d+_[a-z0-9]+$/);
+
+  const again = await owner.mutation(api.projects.ensure, {});
+  expect(again._id).toBe(first._id);
+  expect(again.currentRevisionId).toBe(first.currentRevisionId);
+
+  const [left, right] = await Promise.all([
+    owner.mutation(api.projects.ensure, {}),
+    owner.mutation(api.projects.ensure, {}),
+  ]);
+  expect(left._id).toBe(first._id);
+  expect(right._id).toBe(first._id);
+
+  const current = await owner.query(api.projects.current, {});
+  expect(current?._id).toBe(first._id);
+  expect(current?.status).toBe("empty");
+  expect(current?.currentRevisionId).toBe(first.currentRevisionId);
+
+  const products = await t.run(async (ctx) => {
+    return (await ctx.db.query("projects").collect()).filter(
+      (row) => row.userId === ownerId && row.kind === "product",
+    );
+  });
+  expect(products).toHaveLength(1);
+
+  await expectConvexCode(
+    stranger.query(api.projects.get, { projectId: first._id }),
+    "NOT_FOUND",
+  );
 });

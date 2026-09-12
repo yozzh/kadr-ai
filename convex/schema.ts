@@ -29,7 +29,9 @@ export default defineSchema({
     currentJobId: v.optional(v.id("jobs")),
     currentRevisionId: v.optional(v.string()),
     createdAt: v.number(),
-  }).index("by_userId", ["userId"]),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_and_kind", ["userId", "kind"]),
 
   messages: defineTable({
     userId: v.string(),

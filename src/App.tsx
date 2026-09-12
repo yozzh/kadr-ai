@@ -1,4 +1,11 @@
-import { useEffect, useState, type SVGProps } from "react";
+import {
+  Component,
+  useEffect,
+  useState,
+  type ReactNode,
+  type SVGProps,
+} from "react";
+import type { Doc } from "../convex/_generated/dataModel";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
@@ -271,11 +278,234 @@ export default function App() {
     );
   }
 
+  return (
+    <ProductShell me={me} onSignOut={() => void handleSignOut()} />
+  );
+}
+
+type AppTab = "chat" | "project" | "settings";
+
+class ProjectLoadBoundary extends Component<
+  {
+    children: ReactNode;
+    tab: AppTab;
+    onTab: (tab: AppTab) => void;
+    onRetry: () => void;
+  },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  remount() {
+    this.setState({ failed: false });
+    this.props.onRetry();
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="app">
+          <header className="project-header">
+            <div className="project-header__copy">
+              <h1>Project</h1>
+              <p className="project-header__scope">One current project</p>
+            </div>
+          </header>
+          <main className="project-status">
+            <p className="error">Couldn't load project.</p>
+            <button
+              type="button"
+              className="retry-btn"
+              onClick={() => this.remount()}
+            >
+              Retry
+            </button>
+          </main>
+          <TabBar
+            tab={this.props.tab}
+            onTab={(tab) => {
+              this.props.onTab(tab);
+              this.remount();
+            }}
+          />
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function ProductShell({
+  me,
+  onSignOut,
+}: {
+  me: Parameters<typeof identityLabel>[0];
+  onSignOut: () => void;
+}) {
+  const [shellKey, setShellKey] = useState(0);
+  const [tab, setTab] = useState<AppTab>("settings");
+
+  return (
+    <ProjectLoadBoundary
+      tab={tab}
+      onTab={setTab}
+      onRetry={() => setShellKey((key) => key + 1)}
+    >
+      <ProductShellBody
+        key={shellKey}
+        tab={tab}
+        onTab={setTab}
+        me={me}
+        onSignOut={onSignOut}
+      />
+    </ProjectLoadBoundary>
+  );
+}
+
+function ProductShellBody({
+  me,
+  onSignOut,
+  tab,
+  onTab,
+}: {
+  me: Parameters<typeof identityLabel>[0];
+  onSignOut: () => void;
+  tab: AppTab;
+  onTab: (tab: AppTab) => void;
+}) {
+  const [ensureError, setEnsureError] = useState<string | null>(null);
+  const current = useQuery(api.projects.current);
+  const ensure = useMutation(api.projects.ensure);
+
+  useEffect(() => {
+    let cancelled = false;
+    void ensure({})
+      .then(() => {
+        if (!cancelled) {
+          setEnsureError(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEnsureError("Couldn't load project.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ensure]);
+
+  function retryProject() {
+    setEnsureError(null);
+    void ensure({}).catch(() => {
+      setEnsureError("Couldn't load project.");
+    });
+  }
+
+  return (
+    <div className="app">
+      {tab === "chat" ? <ChatPane /> : null}
+      {tab === "project" ? (
+        <ProjectPane
+          current={current}
+          ensureError={ensureError}
+          onGoToChat={() => onTab("chat")}
+          onRetry={retryProject}
+        />
+      ) : null}
+      {tab === "settings" ? <SettingsPane me={me} onSignOut={onSignOut} /> : null}
+      <TabBar tab={tab} onTab={onTab} />
+    </div>
+  );
+}
+
+function ChatPane() {
+  return (
+    <>
+      <header className="settings-header">
+        <h1>Chat</h1>
+      </header>
+      <main className="chat-empty" />
+    </>
+  );
+}
+
+function ProjectPane({
+  current,
+  ensureError,
+  onGoToChat,
+  onRetry,
+}: {
+  current: Doc<"projects"> | null | undefined;
+  ensureError: string | null;
+  onGoToChat: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <>
+      <header className="project-header">
+        <div className="project-header__copy">
+          <h1>Project</h1>
+          <p className="project-header__scope">One current project</p>
+        </div>
+        <span className="project-header__icon" aria-hidden="true">
+          <IconProject />
+        </span>
+      </header>
+      {ensureError && current == null ? (
+        <main className="project-status">
+          <p className="error">{ensureError}</p>
+          <button type="button" className="retry-btn" onClick={onRetry}>
+            Retry
+          </button>
+        </main>
+      ) : current == null ? (
+        <main className="project-status">
+          <div className="skeleton-deck" aria-hidden="true" />
+          <p>Loading</p>
+        </main>
+      ) : (
+        <main className="project-empty">
+          <div className="deck-placeholder">
+            <IconProject />
+            <p>Your vertical 9:16 deck will appear here</p>
+          </div>
+          <div className="project-empty__copy">
+            <h2>Start by talking about the project</h2>
+            <p>
+              Kadr asks a few questions and builds the first pitch. No templates
+              to pick.
+            </p>
+          </div>
+          <button type="button" className="go-chat-btn" onClick={onGoToChat}>
+            <IconChat />
+            Go to chat
+          </button>
+          <p className="project-empty__helper">
+            Start onboarding · about 3 minutes
+          </p>
+        </main>
+      )}
+    </>
+  );
+}
+
+function SettingsPane({
+  me,
+  onSignOut,
+}: {
+  me: Parameters<typeof identityLabel>[0];
+  onSignOut: () => void;
+}) {
   const label = identityLabel(me);
   const initial = label ? ([...label][0] ?? "").toUpperCase() : "";
 
   return (
-    <div className="app">
+    <>
       <header className="settings-header">
         <h1>Settings</h1>
       </header>
@@ -303,26 +533,52 @@ export default function App() {
             </div>
           </section>
         </div>
-        <button type="button" className="logout-btn" onClick={() => void handleSignOut()}>
+        <button type="button" className="logout-btn" onClick={onSignOut}>
           <IconLogout />
           Log out
         </button>
       </main>
-      <nav className="tabbar" aria-label="Kadr">
-        <button type="button" className="tab">
-          <IconChat />
-          Chat
-        </button>
-        <button type="button" className="tab">
-          <IconProject />
-          Project
-        </button>
-        <button type="button" className="tab tab--active" aria-current="page">
-          <IconSettings />
-          Settings
-        </button>
-      </nav>
-    </div>
+    </>
+  );
+}
+
+function TabBar({
+  tab,
+  onTab,
+}: {
+  tab: AppTab;
+  onTab: (next: AppTab) => void;
+}) {
+  return (
+    <nav className="tabbar" aria-label="Kadr">
+      <button
+        type="button"
+        className={tab === "chat" ? "tab tab--active" : "tab"}
+        aria-current={tab === "chat" ? "page" : undefined}
+        onClick={() => onTab("chat")}
+      >
+        <IconChat />
+        Chat
+      </button>
+      <button
+        type="button"
+        className={tab === "project" ? "tab tab--active" : "tab"}
+        aria-current={tab === "project" ? "page" : undefined}
+        onClick={() => onTab("project")}
+      >
+        <IconProject />
+        Project
+      </button>
+      <button
+        type="button"
+        className={tab === "settings" ? "tab tab--active" : "tab"}
+        aria-current={tab === "settings" ? "page" : undefined}
+        onClick={() => onTab("settings")}
+      >
+        <IconSettings />
+        Settings
+      </button>
+    </nav>
   );
 }
 
