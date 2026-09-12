@@ -459,6 +459,25 @@ function ChatPane({
   const generatePlan = useMutation(api.plan.generate);
   const retryPlan = useMutation(api.plan.retry);
   const [planActionPending, setPlanActionPending] = useState(false);
+  const slides = useQuery(
+    api.slides.current,
+    current ? { projectId: current._id } : "skip",
+  );
+  const generateSlides = useMutation(api.slides.generate);
+  const retrySlides = useMutation(api.slides.retry);
+  const [slidesActionPending, setSlidesActionPending] = useState(false);
+
+  async function runSlidesAction(action: () => Promise<unknown>) {
+    setSlidesActionPending(true);
+    setSendError(null);
+    try {
+      await action();
+    } catch {
+      setSendError("Couldn't start slide generation. Please try again.");
+    } finally {
+      setSlidesActionPending(false);
+    }
+  }
 
   async function runPlanAction(action: () => Promise<unknown>) {
     setPlanActionPending(true);
@@ -603,6 +622,26 @@ function ChatPane({
         <section className="supervisor-failed" role="alert">
           <span>Couldn't build the presentation plan.</span>
           <button type="button" disabled={planActionPending} onClick={() => void runPlanAction(() => retryPlan({ jobId: plan.job!._id }))}>Retry</button>
+        </section>
+      ) : null}
+      {current && current.status === "plan_ready" && current.currentPlanRevisionId && !slides?.job ? (
+        <section className="onboarding-card" aria-label="Presentation slides action">
+          <div>
+            <strong>Your plan is ready</strong>
+            <span>Turn it into a vertical slide deck.</span>
+          </div>
+          <button type="button" className="onboarding-primary" disabled={slidesActionPending} onClick={() => void runSlidesAction(() => generateSlides({ projectId: current._id, planRevisionId: current.currentPlanRevisionId! }))}>Generate slides</button>
+        </section>
+      ) : null}
+      {slides?.job?.status === "queued" || slides?.job?.status === "running" ? (
+        <section className="onboarding-progress" aria-live="polite">
+          <div className="onboarding-progress__copy"><span>Presentation slides</span><strong>Building…</strong></div>
+        </section>
+      ) : null}
+      {slides?.job?.status === "failed" ? (
+        <section className="supervisor-failed" role="alert">
+          <span>Couldn't build the presentation slides.</span>
+          <button type="button" disabled={slidesActionPending} onClick={() => void runSlidesAction(() => retrySlides({ jobId: slides.job!._id }))}>Retry</button>
         </section>
       ) : null}
       <form className="composer" onSubmit={(event) => void handleSubmit(event)}>

@@ -31,6 +31,8 @@ export default defineSchema({
     confirmedBriefRevisionId: v.optional(v.string()),
     currentPlanJobId: v.optional(v.id("jobs")),
     currentPlanRevisionId: v.optional(v.string()),
+    currentSlidesJobId: v.optional(v.id("jobs")),
+    currentSlidesRevisionId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])
@@ -109,6 +111,7 @@ export default defineSchema({
   slides: defineTable({
     userId: v.string(),
     projectId: v.id("projects"),
+    jobId: v.id("jobs"),
     planItemId: v.id("planItems"),
     revisionId: v.string(),
     sort: v.number(),
@@ -116,12 +119,13 @@ export default defineSchema({
     body: v.string(),
     placeholder: v.object({
       aspect: v.literal("9:16"),
-      status: v.string(),
+      status: v.literal("empty"),
       description: v.string(),
     }),
   })
     .index("by_userId", ["userId"])
-    .index("by_projectId", ["projectId"]),
+    .index("by_projectId", ["projectId"])
+    .index("by_projectId_and_revisionId", ["projectId", "revisionId"]),
 
   questions: defineTable({
     questionId: v.string(),

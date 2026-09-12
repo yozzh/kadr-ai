@@ -26,6 +26,8 @@ import type * as planAction from "../planAction.js";
 import type * as projects from "../projects.js";
 import type * as questions from "../questions.js";
 import type * as skills from "../skills.js";
+import type * as slides from "../slides.js";
+import type * as slidesAction from "../slidesAction.js";
 import type * as supervisor from "../supervisor.js";
 import type * as supervisorPrompt from "../supervisorPrompt.js";
 import type * as supervisorState from "../supervisorState.js";
@@ -55,6 +57,8 @@ declare const fullApi: ApiFromModules<{
   projects: typeof projects;
   questions: typeof questions;
   skills: typeof skills;
+  slides: typeof slides;
+  slidesAction: typeof slidesAction;
   supervisor: typeof supervisor;
   supervisorPrompt: typeof supervisorPrompt;
   supervisorState: typeof supervisorState;

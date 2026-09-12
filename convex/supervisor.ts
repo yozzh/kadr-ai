@@ -34,6 +34,15 @@ export function assertPlanToolRuntimeArgs(
     provided.confirmedBriefRevisionId !== expected.confirmedBriefRevisionId) throw new Error("TOOL_ARGS_INVALID");
 }
 
+export function assertSlidesToolRuntimeArgs(
+  provided: { projectId: string; planRevisionId: string },
+  expected: { projectId: string; planRevisionId?: string },
+) {
+  if (provided.projectId !== expected.projectId || provided.planRevisionId !== expected.planRevisionId) {
+    throw new Error("TOOL_ARGS_INVALID");
+  }
+}
+
 export const runSupervisor = internalAction({
   args: argsValidator,
   handler: async (ctx, args) => {
@@ -89,6 +98,21 @@ export const runSupervisor = internalAction({
           type: "object",
           properties: { projectId: { type: "string" }, confirmedBriefRevisionId: { type: "string" } },
           required: ["projectId", "confirmedBriefRevisionId"],
+          additionalProperties: false,
+        } }),
+        tool(async ({ projectId, planRevisionId }: { projectId: string; planRevisionId: string }) => {
+          if (!available.has("generate_slides")) throw new Error("TOOL_NOT_AVAILABLE");
+          assertSlidesToolRuntimeArgs(
+            { projectId, planRevisionId },
+            { projectId: String(args.projectId), planRevisionId: turn.project.currentPlanRevisionId },
+          );
+          return await ctx.runMutation(internal.slides.enqueueInternal, {
+            userId: args.userId, projectId: args.projectId, planRevisionId,
+          });
+        }, { name: "generate_slides", description: "Queue slides from the current plan using the exact IDs in the runtime envelope.", schema: {
+          type: "object",
+          properties: { projectId: { type: "string" }, planRevisionId: { type: "string" } },
+          required: ["projectId", "planRevisionId"],
           additionalProperties: false,
         } }),
       ].filter((candidate) => available.has(candidate.name as never));

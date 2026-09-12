@@ -238,3 +238,14 @@ test("chat exposes brief-ready plan generation, progress, and explicit safe retr
   expect(appSource).toContain("Couldn't build the presentation plan.");
   expect(appSource).not.toContain("PLAN_GENERATION_FAILED");
 });
+
+test("chat exposes plan-ready slide generation, progress, and safe retry without a viewer", () => {
+  expect(appSource).toContain("api.slides.generate");
+  expect(appSource).toContain("api.slides.current");
+  expect(appSource).toContain("api.slides.retry");
+  expect(appSource).toContain("Your plan is ready");
+  expect(appSource).toContain("Generate slides");
+  expect(appSource).toContain("Presentation slides");
+  expect(appSource).toContain("Couldn't build the presentation slides.");
+  expect(appSource).not.toContain("SLIDES_GENERATION_FAILED");
+});

@@ -18,7 +18,8 @@ import { buildEnvelope, MAIN_PROMPT } from "./supervisorPrompt";
 import httpSource from "./http.ts?raw";
 import authSource from "./auth.ts?raw";
 import supervisorSource from "./supervisor.ts?raw";
-import { assertPlanToolRuntimeArgs } from "./supervisor";
+import { assertPlanToolRuntimeArgs, assertSlidesToolRuntimeArgs } from "./supervisor";
+import { validateSlides } from "./slides";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -759,6 +760,88 @@ test("presentation plan is gated, idempotent, ordered, retryable, and stale-safe
     { sort: 1, talkingPoint: "Solution", jobId: retry!._id },
   ]);
   expect((await owner.query(api.projects.get, { projectId: project._id })).status).toBe("plan_ready");
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
+test("slides are gated, validated, atomically published, retryable, and stale-safe", async () => {
+  const t = makeTest();
+  vi.useFakeTimers();
+  const userId = String(await insertUser(t));
+  const owner = asUser(t, userId);
+  const project = await owner.mutation(api.projects.ensure, {});
+  await expectConvexCode(owner.mutation(api.slides.generate, {
+    projectId: project._id, planRevisionId: "not-ready",
+  }), "TOOL_NOT_AVAILABLE");
+  const planRevisionId = "plan_ready_revision";
+  const planItems = await t.run(async (ctx) => {
+    const sourceMessageId = await ctx.db.insert("messages", {
+      userId, projectId: project._id, role: "user", body: "Confirmed facts", createdAt: Date.now(),
+    });
+    await ctx.db.insert("briefAnswers", {
+      userId, projectId: project._id, questionId: "q_one_liner", revisionId: "brief_ready_revision",
+      value: "Helps café owners plan shifts", unknown: false, messageId: sourceMessageId,
+    });
+    await ctx.db.patch(project._id, {
+      status: "plan_ready", confirmedBriefRevisionId: "brief_ready_revision", currentPlanRevisionId: planRevisionId,
+    });
+    const jobId = await ctx.db.insert("jobs", {
+      userId, projectId: project._id, kind: "presentation_plan", status: "succeeded",
+      revisionId: "brief_ready_revision", createdAt: Date.now(),
+    });
+    return await Promise.all(["Problem", "Solution"].map((talkingPoint, sort) => ctx.db.insert("planItems", {
+      userId, projectId: project._id, jobId, revisionId: planRevisionId, sort, talkingPoint,
+    })));
+  });
+  const ready = await owner.query(api.projects.get, { projectId: project._id });
+  const idle = parseThreadState(ready.langgraphThreadState);
+  expect(listAvailableTools(idle, false, ready.status, ready.confirmedBriefRevisionId)).toContain("generate_slides");
+  expect(listAvailableTools({ ...idle, pendingIntent: "offer_skill:presentation_onboarding" }, false, ready.status, ready.confirmedBriefRevisionId))
+    .not.toContain("generate_slides");
+  expect(listAvailableTools({ ...idle, activeSkill: "presentation_onboarding", skillVersion: 1 }, false, ready.status, ready.confirmedBriefRevisionId))
+    .not.toContain("generate_slides");
+  const envelope = buildEnvelope(ready, idle);
+  expect(envelope.text).toContain(JSON.stringify({ projectId: project._id, planRevisionId }));
+  expect(() => assertSlidesToolRuntimeArgs(
+    { projectId: String(project._id), planRevisionId: "wrong" },
+    { projectId: String(project._id), planRevisionId },
+  )).toThrow("TOOL_ARGS_INVALID");
+
+  const first = await owner.mutation(api.slides.generate, { projectId: project._id, planRevisionId });
+  const duplicate = await owner.mutation(api.slides.generate, { projectId: project._id, planRevisionId });
+  expect(duplicate?._id).toBe(first?._id);
+  const queued = await owner.query(api.projects.get, { projectId: project._id });
+  const firstArgs = {
+    userId, projectId: project._id, jobId: first!._id, planRevisionId,
+    slidesRevisionId: queued.currentSlidesRevisionId!,
+  };
+  const loaded = await t.mutation(internal.slides.load, firstArgs);
+  expect(loaded.planItems.map((item) => item.talkingPoint)).toEqual(["Problem", "Solution"]);
+  expect(() => validateSlides([{ planItemId: planItems[0], sort: 0, headline: " ", body: "Body", placeholder: {
+    aspect: "9:16", status: "empty", description: "Visual",
+  }}], loaded.planItems)).toThrow(/SLIDE_CONTENT_INVALID.*field=slides/);
+  await t.mutation(internal.slides.fail, { ...firstArgs, error: "SLIDE_CONTENT_INVALID:slide=1:field=headline" });
+  expect((await owner.query(api.slides.current, { projectId: project._id })).job?.error)
+    .toBe("SLIDE_CONTENT_INVALID:slide=1:field=headline");
+  expect(await t.run(async (ctx) => ctx.db.query("slides").collect())).toHaveLength(0);
+
+  const retry = await owner.mutation(api.slides.retry, { jobId: first!._id });
+  const retryProject = await owner.query(api.projects.get, { projectId: project._id });
+  expect(await t.mutation(internal.slides.apply, { ...firstArgs, slides: [] })).toEqual({ applied: false });
+  const retryArgs = { ...firstArgs, jobId: retry!._id, slidesRevisionId: retryProject.currentSlidesRevisionId! };
+  await t.mutation(internal.slides.load, retryArgs);
+  const valid = loaded.planItems.map((item) => ({
+    planItemId: item._id, sort: item.sort, headline: ` Headline ${item.sort + 1} `, body: "Body",
+    placeholder: { aspect: "9:16" as const, status: "empty" as const, description: "Process diagram" },
+  }));
+  await t.mutation(internal.slides.apply, { ...retryArgs, slides: valid });
+  const done = await owner.query(api.slides.current, { projectId: project._id });
+  expect(done.job?.status).toBe("succeeded");
+  expect(done.slides.map(({ sort, headline, jobId }) => ({ sort, headline, jobId }))).toEqual([
+    { sort: 0, headline: "Headline 1", jobId: retry!._id },
+    { sort: 1, headline: "Headline 2", jobId: retry!._id },
+  ]);
+  expect((await owner.query(api.projects.get, { projectId: project._id })).status).toBe("slides_ready");
   vi.clearAllTimers();
   vi.useRealTimers();
 });

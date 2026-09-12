@@ -15,9 +15,13 @@ export function listAvailableTools(
   if (state.pendingIntent !== null) {
     return ["offer_skill", "accept_skill_offer", "clear_skill"];
   }
-  return projectStatus === "brief_ready" && confirmedBriefRevisionId
-    ? ["offer_skill", "generate_presentation_plan"]
-    : ["offer_skill"];
+  if (projectStatus === "brief_ready" && confirmedBriefRevisionId) {
+    return ["offer_skill", "generate_presentation_plan"];
+  }
+  if (projectStatus === "plan_ready") {
+    return ["offer_skill", "generate_slides"];
+  }
+  return ["offer_skill"];
 }
 
 export function assertToolAllowed(id: SupervisorToolId, available: SupervisorToolId[]) {
