@@ -87,3 +87,45 @@ export function identityLabel(
   }
   return null;
 }
+
+function chatErrorMessage(error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error);
+  if (detail.includes("MESSAGE_EMPTY")) {
+    return "Write a message before sending.";
+  }
+  if (detail.includes("MESSAGE_TOO_LONG")) {
+    return "Your message is too long (maximum 4,000 characters).";
+  }
+  return "Couldn't send your message. Check your connection and try again.";
+}
+
+export async function sendChatDraft<ProjectId>({
+  projectId,
+  draft,
+  clientMessageId,
+  makeId,
+  send,
+}: {
+  projectId: ProjectId;
+  draft: string;
+  clientMessageId: string | null;
+  makeId: () => string;
+  send: (args: {
+    projectId: ProjectId;
+    body: string;
+    clientMessageId: string;
+  }) => Promise<unknown>;
+}) {
+  const retryId = clientMessageId ?? makeId();
+  try {
+    await send({ projectId, body: draft, clientMessageId: retryId });
+    return { draft: "", clientMessageId: null, error: null, confirmed: true };
+  } catch (error) {
+    return {
+      draft,
+      clientMessageId: retryId,
+      error: chatErrorMessage(error),
+      confirmed: false,
+    };
+  }
+}

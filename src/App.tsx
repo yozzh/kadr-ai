@@ -21,6 +21,7 @@ import {
   probeRequested,
   returnedOAuthError,
   SAFE_SIGN_IN_ERROR,
+  sendChatDraft,
 } from "./authUi";
 
 export default function App() {
@@ -424,17 +425,6 @@ function ProductShellBody({
   );
 }
 
-function chatErrorMessage(error: unknown) {
-  const detail = error instanceof Error ? error.message : String(error);
-  if (detail.includes("MESSAGE_EMPTY")) {
-    return "Write a message before sending.";
-  }
-  if (detail.includes("MESSAGE_TOO_LONG")) {
-    return "Your message is too long (maximum 4,000 characters).";
-  }
-  return "Couldn't send your message. Check your connection and try again.";
-}
-
 function ChatPane({
   current,
 }: {
@@ -465,19 +455,19 @@ function ChatPane({
       return;
     }
 
-    const retryId = clientMessageId ?? crypto.randomUUID();
-    setClientMessageId(retryId);
     setSending(true);
     setSendError(null);
-    try {
-      await send({ projectId: current._id, body: draft, clientMessageId: retryId });
-      setDraft("");
-      setClientMessageId(null);
-    } catch (error) {
-      setSendError(chatErrorMessage(error));
-    } finally {
-      setSending(false);
-    }
+    const result = await sendChatDraft({
+      projectId: current._id,
+      draft,
+      clientMessageId,
+      makeId: () => crypto.randomUUID(),
+      send,
+    });
+    setDraft(result.draft);
+    setClientMessageId(result.clientMessageId);
+    setSendError(result.error);
+    setSending(false);
   }
 
   return (

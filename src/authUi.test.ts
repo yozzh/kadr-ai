@@ -10,6 +10,7 @@ import {
   probeRequested,
   returnedOAuthError,
   SAFE_SIGN_IN_ERROR,
+  sendChatDraft,
 } from "./authUi";
 import appSource from "./App.tsx?raw";
 import mainSource from "./main.tsx?raw";
@@ -191,4 +192,29 @@ test("log out returns to guest chrome and hides probe identity", () => {
   expect(appSource).toMatch(
     /if \(!isAuthenticated\) \{[\s\S]*Sign in with Google[\s\S]*if \(showProbe\)/,
   );
+});
+
+test("rejected chat send keeps the draft and retry id without confirming", async () => {
+  let sendArgs: { body: string; clientMessageId: string } | undefined;
+  const result = await sendChatDraft({
+    projectId: "project-id" as never,
+    draft: "Still here",
+    clientMessageId: null,
+    makeId: () => "retry-id",
+    send: async (args) => {
+      sendArgs = args;
+      throw new Error("network unavailable");
+    },
+  });
+
+  expect(sendArgs).toMatchObject({
+    body: "Still here",
+    clientMessageId: "retry-id",
+  });
+  expect(result).toEqual({
+    draft: "Still here",
+    clientMessageId: "retry-id",
+    error: "Couldn't send your message. Check your connection and try again.",
+    confirmed: false,
+  });
 });
