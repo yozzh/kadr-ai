@@ -42,7 +42,12 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_projectId", ["projectId"]),
+    .index("by_projectId", ["projectId"])
+    .index("by_projectId_and_createdAt", ["projectId", "createdAt"])
+    .index("by_projectId_and_clientMessageId", [
+      "projectId",
+      "clientMessageId",
+    ]),
 
   briefAnswers: defineTable({
     userId: v.string(),

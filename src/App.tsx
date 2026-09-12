@@ -2,6 +2,7 @@ import {
   Component,
   useEffect,
   useState,
+  type FormEvent,
   type ReactNode,
   type SVGProps,
 } from "react";
@@ -347,7 +348,7 @@ function ProductShell({
   onSignOut: () => void;
 }) {
   const [shellKey, setShellKey] = useState(0);
-  const [tab, setTab] = useState<AppTab>("settings");
+  const [tab, setTab] = useState<AppTab>("chat");
 
   return (
     <ProjectLoadBoundary
@@ -408,7 +409,7 @@ function ProductShellBody({
 
   return (
     <div className="app">
-      {tab === "chat" ? <ChatPane /> : null}
+      {tab === "chat" ? <ChatPane current={current} /> : null}
       {tab === "project" ? (
         <ProjectPane
           current={current}
@@ -423,13 +424,120 @@ function ProductShellBody({
   );
 }
 
-function ChatPane() {
+function chatErrorMessage(error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error);
+  if (detail.includes("MESSAGE_EMPTY")) {
+    return "Write a message before sending.";
+  }
+  if (detail.includes("MESSAGE_TOO_LONG")) {
+    return "Your message is too long (maximum 4,000 characters).";
+  }
+  return "Couldn't send your message. Check your connection and try again.";
+}
+
+function ChatPane({
+  current,
+}: {
+  current: Doc<"projects"> | null | undefined;
+}) {
+  const [draft, setDraft] = useState("");
+  const [clientMessageId, setClientMessageId] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const messages = useQuery(
+    api.messages.list,
+    current ? { projectId: current._id } : "skip",
+  );
+  const send = useMutation(api.messages.send);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!current || sending) {
+      return;
+    }
+    const trimmed = draft.trim();
+    if (trimmed.length === 0) {
+      setSendError("Write a message before sending.");
+      return;
+    }
+    if (trimmed.length > 4000) {
+      setSendError("Your message is too long (maximum 4,000 characters).");
+      return;
+    }
+
+    const retryId = clientMessageId ?? crypto.randomUUID();
+    setClientMessageId(retryId);
+    setSending(true);
+    setSendError(null);
+    try {
+      await send({ projectId: current._id, body: draft, clientMessageId: retryId });
+      setDraft("");
+      setClientMessageId(null);
+    } catch (error) {
+      setSendError(chatErrorMessage(error));
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <>
-      <header className="settings-header">
-        <h1>Chat</h1>
+      <header className="chat-header">
+        <div className="brand">
+          <span className="brand__mark">K</span>
+          <span className="brand__name">Kadr</span>
+        </div>
       </header>
-      <main className="chat-empty" />
+      <main className="chat" aria-live="polite">
+        <p className="chat__day">Today</p>
+        {current == null || messages === undefined ? (
+          <p className="chat__status">Loading conversation…</p>
+        ) : messages.length === 0 ? (
+          <div className="message message--assistant">
+            Your interview will appear here when Kadr is connected.
+          </div>
+        ) : (
+          <div className="message-list">
+            {messages.map((message) => (
+              <div
+                className={`message message--${message.role}`}
+                key={message._id}
+              >
+                {message.body}
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+      <form className="composer" onSubmit={(event) => void handleSubmit(event)}>
+        <label className="sr-only" htmlFor="chat-message">
+          Message Kadr
+        </label>
+        <textarea
+          id="chat-message"
+          value={draft}
+          rows={1}
+          placeholder="Tell Kadr about your project…"
+          disabled={!current}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setSendError(null);
+          }}
+        />
+        <button
+          type="submit"
+          className="composer__send"
+          aria-label="Send message"
+          disabled={!current || sending}
+        >
+          <IconSend />
+        </button>
+        {sendError ? (
+          <p className="composer__error" role="alert">
+            {sendError}
+          </p>
+        ) : null}
+      </form>
     </>
   );
 }
@@ -678,6 +786,20 @@ function IconSettings() {
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function IconSend() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="m5 12 14-7-5 14-2-5-7-2Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );

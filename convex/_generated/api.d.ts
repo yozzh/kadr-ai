@@ -15,8 +15,11 @@ import type {
 } from "convex/server";
 import type * as auth from "../auth.js";
 import type * as authz from "../authz.js";
+import type * as health from "../health.js";
 import type * as http from "../http.js";
 import type * as jobs from "../jobs.js";
+import type * as messageLimits from "../messageLimits.js";
+import type * as messages from "../messages.js";
 import type * as projects from "../projects.js";
 import type * as questions from "../questions.js";
 import type * as users from "../users.js";
@@ -32,8 +35,11 @@ import type * as users from "../users.js";
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authz: typeof authz;
+  health: typeof health;
   http: typeof http;
   jobs: typeof jobs;
+  messageLimits: typeof messageLimits;
+  messages: typeof messages;
   projects: typeof projects;
   questions: typeof questions;
   users: typeof users;

@@ -6,6 +6,7 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { QUESTION_CATALOG } from "./questions";
 import * as jobs from "./jobs";
+import * as messages from "./messages";
 import * as projects from "./projects";
 import * as questions from "./questions";
 import * as users from "./users";
@@ -83,6 +84,7 @@ test("schema has Epic 1 tables plus auth and no remotion/export/voice snapshots"
 test("public api is query/mutation only; auth is google plus http routes", () => {
   for (const [name, fn] of [
     ...publicFunctions(jobs),
+    ...publicFunctions(messages),
     ...publicFunctions(projects),
     ...publicFunctions(questions),
     ...publicFunctions(users),
@@ -372,4 +374,84 @@ test("ensure creates one product; current is stable; foreign get is NOT_FOUND", 
     stranger.query(api.projects.get, { projectId: first._id }),
     "NOT_FOUND",
   );
+});
+
+test("messages persist trimmed, ordered, idempotent, validated, and owner-only", async () => {
+  const t = makeTest();
+  const ownerId = String(await insertUser(t, { email: "owner@example.com" }));
+  const strangerId = String(await insertUser(t, { email: "other@example.com" }));
+  const owner = asUser(t, ownerId);
+  const stranger = asUser(t, strangerId);
+  const project = await owner.mutation(api.projects.ensure, {});
+
+  await expectConvexCode(
+    t.query(api.messages.list, { projectId: project._id }),
+    "UNAUTHENTICATED",
+  );
+  await expectConvexCode(
+    stranger.query(api.messages.list, { projectId: project._id }),
+    "NOT_FOUND",
+  );
+  await expectConvexCode(
+    stranger.mutation(api.messages.send, {
+      projectId: project._id,
+      body: "Hello",
+      clientMessageId: "foreign",
+    }),
+    "NOT_FOUND",
+  );
+  await expectConvexCode(
+    owner.mutation(api.messages.send, {
+      projectId: project._id,
+      body: "   ",
+      clientMessageId: "empty",
+    }),
+    "MESSAGE_EMPTY",
+  );
+  await expectConvexCode(
+    owner.mutation(api.messages.send, {
+      projectId: project._id,
+      body: "x".repeat(4001),
+      clientMessageId: "long",
+    }),
+    "MESSAGE_TOO_LONG",
+  );
+
+  const first = await owner.mutation(api.messages.send, {
+    projectId: project._id,
+    body: "  Hello  ",
+    clientMessageId: "client-1",
+  });
+  const retry = await owner.mutation(api.messages.send, {
+    projectId: project._id,
+    body: "different retry body",
+    clientMessageId: "client-1",
+  });
+  expect(retry._id).toBe(first._id);
+  expect(retry.body).toBe("Hello");
+
+  await owner.mutation(api.messages.send, {
+    projectId: project._id,
+    body: "Second",
+    clientMessageId: "client-2",
+  });
+  const list = await owner.query(api.messages.list, { projectId: project._id });
+  expect(list.map((message) => message.body)).toEqual(["Hello", "Second"]);
+  expect(list).toHaveLength(2);
+
+  const updated = await owner.query(api.projects.get, { projectId: project._id });
+  const threadId = updated.langgraphThreadId;
+  expect(threadId).toMatch(/^thread_/);
+  await owner.mutation(api.messages.send, {
+    projectId: project._id,
+    body: "Third",
+    clientMessageId: "client-3",
+  });
+  expect(
+    (await owner.query(api.projects.get, { projectId: project._id }))
+      .langgraphThreadId,
+  ).toBe(threadId);
+
+  const allRows = await t.run(async (ctx) => ctx.db.query("messages").collect());
+  expect(allRows).toHaveLength(3);
 });
